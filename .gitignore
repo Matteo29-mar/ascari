@@ -1,0 +1,12 @@
+# Ignora la cartella con i pacchetti installati
+node_modules/
+
+# Ignora i log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Ignora file temporanei o di build
+dist/
+build/
+.env
