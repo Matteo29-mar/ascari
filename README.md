@@ -13,25 +13,23 @@ docker run -d --name ascari_auth_db -e POSTGRES_PASSWORD=ascari -e POSTGRES_USER
 ```
 > Se usi `5433` sull'host, aggiorna `DATABASE_URL` in `backend/.env`.
 
+per DB 
+```bash
+npx prisma studio
+
 ## Backend
 ```bash
 cd backend
 cp .env.example .env
 # Aggiorna DATABASE_URL se necessario
+# primo avvio in nuovo ambiente
 npm install
 npm run prisma:generate
 npm run prisma:migrate
-npm run prisma:seed
+npm run prisma:seed # non più necessario
 npm run dev
 ```
 - server su `http://localhost:4001`
-- endpoints:
-  - `POST /auth/register {email,password,name}`
-  - `POST /auth/login {email,password}`
-  - `GET /auth/me` (Bearer token)
-  - `GET /cars` — elenco
-  - `GET /cars/search?q=Ascari%20GT`
-  - `GET /cars/nearby?lat=45.46&lon=9.18&radiusKm=5`
 
 ## Frontend
 ```bash
@@ -40,7 +38,6 @@ npm install
 npm run dev
 ```
 - app su `http://localhost:5173`
-- pagine: `/login`, `/register`, `/cars`
 
 ## OAuth (Google/Apple) — attivazione successiva
 - Inserisci le credenziali in `backend/.env`.

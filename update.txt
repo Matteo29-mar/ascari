@@ -77,3 +77,7 @@ update 23/10/2025
 obiettivi giornata;
 1. aggiungere tasto elimina e sincronizzare GUI con DB
 2. Uteni admin, privato con schermata che posta e privato con dashboard che vede 
+
+resoconto giornata
+1. aggiunto tasto elimina
+2. creato un repository git per versionamentos
