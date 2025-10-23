@@ -3,7 +3,7 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { http } from '../api'
 import Carousel from '../components/Carousel/Carousel'
 import { Link } from 'react-router-dom'
-import { loadDrafts, removeDraft, DraftCar } from '../../../../ascari-auth-search/frontend/lib/drafts'
+import { loadDrafts, removeDraft, DraftCar } from '../../lib/drafts'
 import { useNavigate } from 'react-router-dom'
 import { ping } from '../api'
 
@@ -189,6 +189,24 @@ function imagesForCard(car: Car){
                 onClick={() => { removeDraft(d.id); setDrafts(loadDrafts()); }}
               >Elimina</button>
             </div>
+
+            <button
+              className="btn ghost"
+              title="Elimina"
+              onClick={async () => {
+                if (!confirm('Eliminare definitivamente questo veicolo?')) return;
+                await http.delete(`/cars/${Cars}`);
+                await loadAll(); // ricarica la lista
+              }}
+              style={{ border: '1px solid #ef4444', color:'#ef4444', background:'transparent' }}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+                  strokeLinecap="round" strokeLinejoin="round" style={{verticalAlign:'middle'}}>
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+              </svg>
+            </button>
+
 
           </div>
         </article>

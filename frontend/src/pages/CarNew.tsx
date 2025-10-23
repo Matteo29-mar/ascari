@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { http } from '../api'
-import { getDraft, upsertDraft, addDraft, removeDraft } from '../../../../ascari-auth-search/frontend/lib/drafts'
+import { getDraft, upsertDraft, addDraft, removeDraft } from '../../lib/drafts'
 
 function uid() { return Math.random().toString(36).slice(2) + Date.now().toString(36) }
 

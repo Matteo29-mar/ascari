@@ -18,6 +18,7 @@ export default function CarDetail() {
   const [car, setCar] = useState<Car|null>(null)
   const [err, setErr] = useState<string|null>(null)
   const [loading, setLoading] = useState(true)
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     let mounted = true
@@ -60,6 +61,27 @@ export default function CarDetail() {
       <button className="btn secondary" onClick={() => nav(-1)}>← Indietro</button>
       <h1 className="h1" style={{marginTop:10}}>{title}</h1>
       <p className="muted">{car.trimLevel ? car.trimLevel : '—'} · ID #{car.id}</p>
+      <div className="row" style={{justifyContent:'flex-end', gap:8, marginTop:8}}>
+      <button
+        className="btn"
+        onClick={onDelete}
+        disabled={deleting}
+        title="Elimina veicolo"
+        style={{
+          border: '1px solid #ef4444',
+          color: '#ef4444',
+          background: 'transparent'
+        }}
+      >
+        {/* icona X (SVG) */}
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+            strokeLinecap="round" strokeLinejoin="round" style={{verticalAlign:'middle', marginRight:6}}>
+          <line x1="18" y1="6" x2="6" y2="18"></line>
+          <line x1="6" y1="6" x2="18" y2="18"></line>
+        </svg>
+        {deleting ? 'Elimino…' : 'Elimina'}
+      </button>
+    </div>
 
       {/* Carosello immagini */}
       <div className="card" style={{marginTop:12}}>
@@ -112,6 +134,26 @@ export default function CarDetail() {
       </div>
     </div>
   )
+
+  async function onDelete() {
+  if (!id) return;
+  const ok = window.confirm('Eliminare definitivamente questo veicolo?');
+  if (!ok) return;
+
+  try {
+    setDeleting(true);
+    await http.delete(`/cars/${id}`);
+    // feedback semplice; puoi sostituire con toast
+    alert('Veicolo eliminato');
+    nav('/cars'); // torna alla lista
+  } catch (e:any) {
+    const msg = e?.response?.data?.error || e?.message || 'Errore eliminazione';
+    alert(msg);
+  } finally {
+    setDeleting(false);
+  }
+}
+
 }
 
 function Spec({label, value}:{label:string, value:any}) {
@@ -122,3 +164,5 @@ function Spec({label, value}:{label:string, value:any}) {
     </div>
   )
 }
+
+

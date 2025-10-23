@@ -182,13 +182,20 @@ app.put('/cars/:id', async (req, res) => {
   res.json(car);
 });
 
-// ELIMINA (DELETE) — utile per cleanup
+// DELETE /cars/:id  → elimina un veicolo
 app.delete('/cars/:id', async (req, res) => {
   const id = Number(req.params.id);
   if (Number.isNaN(id)) return res.status(400).json({ error: 'Invalid id' });
-  await prisma.car.delete({ where: { id } });
-  res.json({ ok: true });
+  try {
+    await prisma.car.delete({ where: { id } });
+    res.json({ ok: true });
+  } catch (e:any) {
+    // se l'id non esiste
+    if (e.code === 'P2025') return res.status(404).json({ error: 'Not found' });
+    throw e;
+  }
 });
+
 
 app.listen(port, () => {
   console.log(`ASCARI auth/search backend on http://localhost:${port}`);
