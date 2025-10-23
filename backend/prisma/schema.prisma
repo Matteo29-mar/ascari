@@ -1,0 +1,49 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        Int      @id @default(autoincrement())
+  email     String   @unique
+  password  String
+  name      String
+  createdAt DateTime @default(now())
+}
+
+model Car {
+  id    Int    @id @default(autoincrement())
+  make  String
+  model String
+  year  Int
+
+  // --- DETTAGLI ---
+  trimLevel    String?
+  priceEur     Int?
+  color        String?
+  transmission String?
+  fuelType     String?
+  engine       String?
+  horsepower   Int?
+  torqueNm     Int?
+  drivetrain   String?
+  seats        Int?
+  doors        Int?
+  description  String?
+  mileageKm    Int? // 👈 DEVE esserci
+  photos       String[] // Postgres array di stringhe
+  coverUrl     String? // 👈 nuova: immagine di copertina per le card
+
+  // --- POSIZIONE ---
+  latitude  Float?
+  longitude Float?
+
+  createdAt DateTime @default(now())
+
+  @@index([make, model])
+  @@index([latitude, longitude])
+}

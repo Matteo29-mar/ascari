@@ -1,0 +1,79 @@
+demo presentata 10/10/25
+dashboard minimale con le schede auto
+
+da aggiungere 
+-scheda prodotto
+-login
+-chat
+
+
+update 10/10/25
+- lavoro su scheda prodotto
+
+
+da capire 
+cosa è seed 
+prisma
+
+---------------------------------
+update 15/10/2025
+obiettivi giornata:
+1. migliorare scheda prodotto
+2. segnare la procedura di avvio applicazione
+3. implementare come caricare un prodotto
+
+1.
+scheda prodotto capita meglio fatti degli aggiustamenti, sull immagine di copertina e carosello
+
+2. procedura:
+-Se hai solo aggiunto immagini in frontend/public/cars → non serve riavviare, basta ricaricare la pagina.
+
+-per db 
+cd backend
+npx prisma studio
+
+cd backend
+npx prisma generate
+npx prisma migrate dev --name update-cars-photos   # solo se hai cambiato lo schema
+npm run prisma:seed                                # per ricaricare i demo
+npm run dev
+
+3. i prodotti in questa fase di sviluppo si caricano di deafult tramite un il seed.ts che prende immagini e info dal file e dal codice
+    referenzia le info con il scheda.prisma e le carica sul db di dev. 
+    Se si vuole aggiungere un prodotto in run time non lo facciamo dal seed ma dal db direttamente e facendo refresh della pagina li aggiunge.
+
+
+Next step 
+1. eliminare il seed e caricare tutti i prodotti dal prisma:studio ( non voglio nessun placehoder sul codice) più lungo ma più realistico
+2. implementare una bozza di tasto + per caricare il prodotto da GUI e non da DB, possibilità che dalla GUI esca fuori un JSON che venga salvato sul DB e se spegno il DB mi appare 
+    ancora ( memorizzato) e faccia riferimento con path di memoria dl pc per il momento per recuperare le immagini
+3. incominciare a vederer per creazione utente 
+
+---------------------------------
+update 16/10/2025
+obiettivi giornata:
+1. caricare macchine 
+
+ gli obiettivi di questa giornata abbiamo creato il tasto nuovo con rotte nuovo/modifica/elimina per le macchine 
+ tolto il seed adesso si carica tutto o tramite DB o tramite GUI.
+ link dettaglio modello con carosello aggioranto e funzionante 
+
+---------------------------------
+
+ resoconto SAL 17/10/2025
+ - aggiungere campi indicati in foto (vedere whatsapp) da far vedere nella scheda piccola e nel dettaglio auto 
+ - aggiunger un tasto di elimina nella GUI e sincronizzata con DB  
+ - gestire le utenze con login e registra privto privato
+ - tasto preferito, dopo essersi loggato 
+ - mappa interattiva con le auto per strada 
+ - chat viene dopo la gestione del login 
+ - sicurezza informatica 
+ - match auto ( per app)  
+ - ipotesi con adesivo sull'auto per privato e privato che vende auto. io in strada vedo auto bippo con telefono l'adesivo login app e mando interessamento auto 
+
+---------------------------------
+
+update 23/10/2025
+obiettivi giornata;
+1. aggiungere tasto elimina e sincronizzare GUI con DB
+2. Uteni admin, privato con schermata che posta e privato con dashboard che vede 
