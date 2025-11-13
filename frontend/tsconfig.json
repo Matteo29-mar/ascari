@@ -1,0 +1,15 @@
+{
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "target": "esnext",
+    "module": "esnext",
+    "lib": ["dom", "esnext"],
+    "types": ["vite/client"],            // includi i tipi di vite/client
+    "typeRoots": ["./node_modules/@types", "./node_modules/vite/types"],  // aggiungi anche qui
+    "moduleResolution": "node",
+    "esModuleInterop": true,
+    "skipLibCheck": true
+    // ... altre opzioni
+  },
+  "include": ["src", "vite-env.d.ts"]
+}

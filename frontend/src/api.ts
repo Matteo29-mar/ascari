@@ -1,20 +1,66 @@
-import axios from 'axios'
-export const API = import.meta.env.VITE_API || 'http://localhost:4001'
+// frontend/src/api.ts
+import axios from 'axios';
 
+// URL base del backend
+export const API_BASE_URL =
+  import.meta.env.VITE_API_URL || 'http://localhost:4002';
+
+// Client Axios base (senza interceptor)
 export const http = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:4001',
-})
+  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:4002/api', // oppure /api se usi /api lato server
+});
 
+
+// --- ESEMPI DI CHIAMATE ---
+
+// Ping (se hai un endpoint di test)
 export async function ping() {
-  return http.get('/health'); // 200 se DB up
+  const res = await http.get('/ping');
+  return res.data;
 }
 
+// Tutte le auto (pagina pubblica)
+export async function getAllCars() {
+  const res = await http.get('/cars');
+  return res.data;
+}
 
-http.interceptors.request.use(cfg => {
-  const token = localStorage.getItem('token')
-  if (token) {
-    cfg.headers = cfg.headers || {}
-    cfg.headers['Authorization'] = 'Bearer ' + token
-  }
-  return cfg
-})
+// Crea una nuova auto (richiede token Clerk)
+export async function createCar(data: any, token: string) {
+  const res = await http.post('/cars', data, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return res.data;
+}
+
+// api.ts o dove hai getMyGarage
+// "Il mio garage" (auto mie + piaciute)
+export async function getMyGarage(token: string) {
+  const res = await http.get('/cars/my-garage', {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return res.data;
+}
+
+// Metti "mi piace"
+export async function likeCar(carId: number, token: string) {
+  const res = await http.post(
+    `/cars/${carId}/like`,
+    null,
+    {
+      headers: { Authorization: `Bearer ${token}` },
+    }
+  );
+  return res.data;
+}
+
+// Togli "mi piace"
+export async function unlikeCar(carId: number, token: string) {
+  const res = await http.delete(
+    `/cars/${carId}/like`,
+    {
+      headers: { Authorization: `Bearer ${token}` },
+    }
+  );
+  return res.data;
+}

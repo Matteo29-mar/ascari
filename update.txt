@@ -80,4 +80,90 @@ obiettivi giornata;
 
 resoconto giornata
 1. aggiunto tasto elimina
-2. creato un repository git per versionamentos
+2. creato un repository git per versionamento
+
+
+-----------------------------------
+update 29/10/2025
+obiettivi giornata:
+1. implementare funzione login con google o funzionalià in generale di registrazione
+
+resoconto giornata;
+1. implementazione login con google fatta. Implementata con Clerk https://dashboard.clerk.com/apps/app_34jIAcokpelg7R4LjVkk2EFIeNn/instances/ins_34jIAeSYprwo1u28wQNfnd3wDF6/api-keys
+tool di terze parti da installare sull'applicazione per permettere la registrazione e la login facile senza perdere molto tempo con tutte le installazioni del carosello
+cosa che ho fatto ma, dopo i primi tentativi ho deciso di spostare il mio focus altrove ed ho trovate CLerk che è una piattaforma terza 
+che permette di configurare una dashboard. https://clerk.com/docs/nextjs/reference/components/authentication/sign-up
+Novità ora funziona anche il register e la login propri ma non portano nulla vanno in codice 400
+
+
+-------------------------------
+update 5/11/2025
+obiettivi giornata:
+1. asscociare login con le auto 
+2. far vedere solo alcuni tasti solo se sei con utente 
+
+resoconto giornata
+1. associazione auto login quasi fatta, ora non salva i dati sul db quindi quando vai in mio garage non vedi l'auto  e vedi bozza non sincronizzata
+2. vedi tutti i tasti ma se non sei loggato ti fa loggare, funziona solo con il mio garage, nuovo. se non sei loggato devi vedere sulle auto non tue dettaglio prodotto e non apri/modifica 
+1. se ti logghi con diversi account la modifica la possono fare e non va bene e anche il tasto elimina.
+
+
+
+-----------------------------
+update 8/11/2025
+
+resoconto giornata
+- dobbiamo riolvere il problema del salvataggio sul DB, ho capito che come chiave privata era sbagliata.
+     quella che usavo sul backend era sbagliata e dava errori.
+     su backedn devo usare (express) e frontend (reat) sistemato problema chiave sono andato su clerk
+- ho scopeto che i campi che passo al backend tramite il frontend sono passati tremite il file draft sul frontend 
+    e se c'è incoerenza si spacca
+- ho sistemato le varie rotte API che avevano degli errori di comunicazione
+- nel backend ho aggiunto l'autorizzazione del token clerk per autenticarsi
+
+siamo arrivati un punto, buono ma ora vanno in loop le richieste al DB, il mio garage e salvo DB funzionano 
+
+
+fine gioranta punti arrivati
+funzionanti
+- login
+- creazione nuova auto e salvataggio sul Database
+- funziona la modifica e il dettaglio 
+- faccio logout e mi collego con un altro utente vedo le auto e non posso modificare e non fare nulla solo il dettaglio auto
+- funziona il mio garage vedo le auto mie postate
+
+non funzionanti
+- smesso di funzionare elimina (solo Database) 
+    penso che sia un problema di rotta e o tokern perché tasto c'è e funzionalità pure
+- tasto modifica ti apre ma non effettua la modifica veramente va in error
+
+prossimi step da aggiungere una volta risolti
+- inserire immagini e redirect nel mio garage al dettaglio dell'auto 
+- se sono senza utente e faccio dettaglio prodotot mi fa la login, no dev riuscire a vedere solo quello se faccio altro si login
+- implementare i mi piace e non mi paice che c' già il codice bozza ma non funzioanante e implementare le rotte
+
+-------------------------------
+
+update 11/11/2025
+obietivi giornata
+1- sistemare il tasto elimina 
+2- sistemare il tasto modifica
+
+resoconto gioranta
+1. sistemato tasto elimina, il problema era sulla rotta non passavo il token
+2. sistemato il tasto modidica anche qui modificato caredit con il passaggio del token e modificata la rotta
+
+nuovo
+- inserito immagini e redirect nel mio garage al dettaglio dell'auto 
+
+da sistemare
+- se faccio tutto con un utente solo va bene funziona
+    cambio utente nel primo refresh tiene le cache della vecchia sessione ma non trovo l'auto dell'altro utente
+    se faccio nuova auto non è sincronizzata con il DB e non va bene. 
+    Da capire perché torni all'altro utente e non trova l'auto che era stata messa prima, come se eliminasse l'auto 
+    
+
+prossimi step 
+- se sono senza utente e faccio dettaglio prodotot mi fa la login, no dev riuscire a vedere solo quello se faccio altro si login
+- implementare i mi piace e non mi paice che c' già il codice bozza ma non funzioanante e implementare le rotte
+
