@@ -5,6 +5,7 @@ export type DraftCar = {
   make: string;
   model: string;
   year: number;
+  title?: string;        // 👈 nuovo campo
   fuelType?: string;
   horsepower?: number;
   mileageKm?: number;

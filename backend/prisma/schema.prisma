@@ -8,17 +8,22 @@ datasource db {
 }
 
 model User {
-  id        Int      @id @default(autoincrement())
+  id        String   @id @default(cuid())
+  clerkId   String   @unique
   email     String   @unique
-  password  String
-  name      String
+  name      String?
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  cars      Car[]
+  likes     Like[]
 }
 
 model Car {
   id    Int    @id @default(autoincrement())
   make  String
   model String
+  title String
   year  Int
 
   // --- DETTAGLI ---
@@ -34,16 +39,37 @@ model Car {
   seats        Int?
   doors        Int?
   description  String?
-  mileageKm    Int? // 👈 DEVE esserci
-  photos       String[] // Postgres array di stringhe
-  coverUrl     String? // 👈 nuova: immagine di copertina per le card
+  mileageKm    Int?
+  photos       String[]
+  coverUrl     String?
 
   // --- POSIZIONE ---
   latitude  Float?
   longitude Float?
 
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // relazione con l'utente
+  ownerId String  @map("owner_id")
+  owner   User    @relation(fields: [ownerId], references: [id])
+
+  likes   Like[]
 
   @@index([make, model])
   @@index([latitude, longitude])
+  @@index([ownerId])
+}
+
+
+model Like {
+  id        String   @id @default(cuid())
+  userId    String
+  carId     Int
+  createdAt DateTime @default(now())
+
+  user      User @relation(fields: [userId], references: [id])
+  car       Car  @relation(fields: [carId], references: [id])
+
+  @@unique([userId, carId]) // uno stesso utente non può mettere "mi piace" due volte alla stessa auto
 }

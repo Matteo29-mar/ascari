@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { http } from '../api'
 import Carousel from '../components/Carousel/Carousel'
+import { useAuth } from '@clerk/clerk-react';
 
 type Car = {
   id:number; make:string; model:string; year:number; trimLevel?:string|null;
@@ -9,7 +10,13 @@ type Car = {
   engine?:string|null; horsepower?:number|null; torqueNm?:number|null; drivetrain?:string|null;
   seats?:number|null; doors?:number|null; description?:string|null; photos?:string[]|null;
   latitude?:number|null; longitude?:number|null;
+
+  // 👇 aggiunto: proprietario dal DB
+  owner?: {
+    clerkId: string;
+  };
 }
+
 
 
 export default function CarDetail() {
@@ -19,6 +26,8 @@ export default function CarDetail() {
   const [err, setErr] = useState<string|null>(null)
   const [loading, setLoading] = useState(true)
   const [deleting, setDeleting] = useState(false);
+  
+  const { userId: clerkUserId, isSignedIn, getToken } = useAuth();  // 👈 QUI
 
   useEffect(() => {
     let mounted = true
@@ -56,12 +65,27 @@ export default function CarDetail() {
   )
   if (!car) return null
 
+  const canEdit =
+  isSignedIn && car.owner && car.owner.clerkId === clerkUserId;
+
   return (
     <div>
       <button className="btn secondary" onClick={() => nav(-1)}>← Indietro</button>
       <h1 className="h1" style={{marginTop:10}}>{title}</h1>
       <p className="muted">{car.trimLevel ? car.trimLevel : '—'} · ID #{car.id}</p>
       <div className="row" style={{justifyContent:'flex-end', gap:8, marginTop:8}}>
+      
+  {/* 👇 SOLO SE È LA MIA AUTO MOSTRO I BOTTONI */}
+  {canEdit && (
+    <>
+      <Link
+        className="btn secondary"
+        to={`/cars/edit/${car.id}`}
+        title="Modifica veicolo"
+      >
+        Modifica
+      </Link>
+
       <button
         className="btn"
         onClick={onDelete}
@@ -73,7 +97,6 @@ export default function CarDetail() {
           background: 'transparent'
         }}
       >
-        {/* icona X (SVG) */}
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
             strokeLinecap="round" strokeLinejoin="round" style={{verticalAlign:'middle', marginRight:6}}>
           <line x1="18" y1="6" x2="6" y2="18"></line>
@@ -81,7 +104,10 @@ export default function CarDetail() {
         </svg>
         {deleting ? 'Elimino…' : 'Elimina'}
       </button>
-    </div>
+    </>
+  )}
+
+</div>
 
       {/* Carosello immagini */}
       <div className="card" style={{marginTop:12}}>
@@ -142,7 +168,19 @@ export default function CarDetail() {
 
   try {
     setDeleting(true);
-    await http.delete(`/cars/${id}`);
+
+        // 👇 prendiamo il token di Clerk
+    const token = await getToken();
+    if (!token) {
+      alert('Non sei autenticato. Riprova ad effettuare il login.');
+      return;
+    }
+
+      await http.delete(`/cars/${id}`, {
+      headers: {
+        Authorization: `Bearer ${token}`,  // 👈 fondamentale
+      },
+    });
     // feedback semplice; puoi sostituire con toast
     alert('Veicolo eliminato');
     nav('/cars'); // torna alla lista

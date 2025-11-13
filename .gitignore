@@ -1,5 +1,6 @@
 # Ignora la cartella con i pacchetti installati
 node_modules/
+update.txt
 
 package-lock.json
 # Ignora i log

@@ -4,20 +4,43 @@ import cors from 'cors';
 import morgan from 'morgan';
 import { PrismaClient } from '@prisma/client';
 import { z } from 'zod';
-import jwt from 'jsonwebtoken';
-import bcrypt from 'bcryptjs';
+import { clerkMiddleware } from '@clerk/express';
+import carsRouter from './routes/cars'; 
+
 
 const app = express();
 const prisma = new PrismaClient();
-const port = Number(process.env.PORT) || 4001;
+const port = Number(process.env.PORT) || 4002;
 const JWT_SECRET = process.env.JWT_SECRET || 'change-me';
 
 // 🔧 body più grande per le immagini base64
-app.use(express.json({ limit: '25mb' }))
-app.use(express.urlencoded({ extended: true, limit: '25mb' }))
-app.use(cors({ origin: process.env.CORS_ORIGIN || '*' }));
-app.use(express.json());
+// body parser
+app.use(express.json({ limit: '25mb' }));
+app.use(express.urlencoded({ extended: true, limit: '25mb' }));
+
+// CORS PRIMA di tutto il resto
+app.use(cors({
+  origin: 'http://localhost:5173',
+  credentials: true,
+}));
+
+// Clerk
+app.use(clerkMiddleware());
+
+// log
 app.use(morgan('dev'));
+
+// ✅ health check semplice
+// Health check semplice per il frontend (sync bozze ecc.) prima di /api/cars se no che senso ha 
+app.get('/api/ping', (_req, res) => {
+  res.json({ ok: true });
+});
+
+// Router (una sola volta!)
+app.use('/api/cars', carsRouter);
+
+
+export default app;
 
 // 🔧 CORS (se usi la variabile, altrimenti metti direttamente l'URL del frontend)
 const ORIGIN = process.env.CORS_ORIGIN || 'http://localhost:5173'
@@ -38,6 +61,14 @@ app.use((req, res, next) => {
   }
   next();
 });
+// qui monti le route protette / semi-protette
+//app.use('/api', carsRouter);
+
+app.listen(port, () => {
+  console.log(`Server running on port ${port}`);
+});
+
+
 
 
 app.get('/health', (_req, res) => res.json({ ok: true }));
@@ -52,58 +83,11 @@ app.post('/cars', async (req, res) => {
   const car = await prisma.car.create({ data: req.body })
   res.status(201).json(car)
 })
-
-app.post('/auth/register', async (req, res) => {
-  const parsed = RegisterBody.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
-  const { email, password, name } = parsed.data;
-  const exists = await prisma.user.findUnique({ where: { email } });
-  if (exists) return res.status(409).json({ error: 'Email already registered' });
-  const hash = await bcrypt.hash(password, 10);
-  const user = await prisma.user.create({ data: { email, password: hash, name } });
-  const token = jwt.sign({ sub: user.id, email }, JWT_SECRET, { expiresIn: '7d' });
-  res.status(201).json({ token, user: { id: user.id, email: user.email, name: user.name } });
-});
-
 const LoginBody = z.object({
   email: z.string().email(),
   password: z.string().min(8)
 });
-app.post('/auth/login', async (req, res) => {
-  const parsed = LoginBody.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
-  const { email, password } = parsed.data;
-  const user = await prisma.user.findUnique({ where: { email } });
-  if (!user) return res.status(401).json({ error: 'Invalid credentials' });
-  const ok = await bcrypt.compare(password, user.password);
-  if (!ok) return res.status(401).json({ error: 'Invalid credentials' });
-  const token = jwt.sign({ sub: user.id, email }, JWT_SECRET, { expiresIn: '7d' });
-  res.json({ token, user: { id: user.id, email: user.email, name: user.name } });
-});
 
-function auth(req: any, res: any, next: any) {
-  const h = req.headers.authorization || '';
-  const token = h.startsWith('Bearer ') ? h.slice(7) : null;
-  if (!token) return res.status(401).json({ error: 'Missing token' });
-  try {
-    const payload: any = jwt.verify(token, JWT_SECRET);
-    req.user = { id: Number(payload.sub), email: payload.email };
-    next();
-  } catch {
-    return res.status(401).json({ error: 'Invalid token' });
-  }
-}
-
-app.get('/auth/me', auth, async (req: any, res) => {
-  const user = await prisma.user.findUnique({ where: { id: req.user.id }, select: { id: true, email: true, name: true } });
-  res.json({ user });
-});
-
-// OAuth placeholders
-// app.get('/auth/google/url', ...)
-// app.get('/auth/google/callback', ...)
-// app.get('/auth/apple/url', ...)
-// app.post('/auth/apple/callback', ...)
 
 const NearbyQuery = z.object({
   lat: z.coerce.number(),
@@ -196,7 +180,3 @@ app.delete('/cars/:id', async (req, res) => {
   }
 });
 
-
-app.listen(port, () => {
-  console.log(`ASCARI auth/search backend on http://localhost:${port}`);
-});
