@@ -1,8 +1,8 @@
 // frontend/src/main.tsx
 import React from 'react';
 import { createRoot } from 'react-dom/client';
-import { BrowserRouter, Routes, Route, Navigate, Link } from 'react-router-dom';
-import { ClerkProvider, useAuth as useClerkAuth } from '@clerk/clerk-react';
+import { BrowserRouter, Routes, Route, Navigate, Link, useNavigate } from 'react-router-dom';
+import { ClerkProvider, useAuth as useClerkAuth, useClerk } from '@clerk/clerk-react';
 
 import Login from './pages/Login';
 import Register from './pages/Register';
@@ -18,6 +18,10 @@ import { AuthButtons } from './components/AuthButtons';
 // Layout con navbar e contenuto
 // ===============================
 function Layout({ children }: { children: React.ReactNode }) {
+  const { isSignedIn, isLoaded } = useClerkAuth();
+  const { openSignIn } = useClerk();
+  const nav = useNavigate();
+
   return (
     <>
       <nav className="nav">
@@ -32,15 +36,31 @@ function Layout({ children }: { children: React.ReactNode }) {
                 display: 'inline-block',
               }}
             />
-            ASCARI <span className="badge">DEV</span>
+            <span className="badge">ASCARI</span>
           </div>
+
           <div className="row" style={{ gap: 16 }}>
             <Link to="/cars">Auto</Link>
-            <Link to="/my-garage">Il mio garage</Link> {/* 👈 link al garage */}
+
+            {/* 🔥 Il mio garage → popup Clerk se non loggato */}
+            <button
+              className="btn-link"
+              onClick={() => {
+                if (!isSignedIn) {
+                  openSignIn();  // 👈 apre il popup
+                  return;
+                }
+                nav("/my-garage"); // 👈 se loggato, vai alla pagina
+              }}
+            >
+              Il mio garage
+            </button>
+
             <AuthButtons />
           </div>
         </div>
       </nav>
+
       <div className="container">{children}</div>
     </>
   );
@@ -51,9 +71,17 @@ function Layout({ children }: { children: React.ReactNode }) {
 // ===============================
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { isSignedIn, isLoaded } = useClerkAuth();
+  const { openSignIn } = useClerk();
 
   if (!isLoaded) return <div>Loading …</div>;
-  if (!isSignedIn) return <Navigate to="/login" replace />;
+
+  // ❌ niente redirect a /login
+  // ✅ ora mostra solo il popup Clerk
+  if (!isSignedIn) {
+    openSignIn(); // 👈 popup Clerk
+    return null;  // evita redirect
+  }
+
   return <>{children}</>;
 }
 
@@ -66,22 +94,15 @@ function AppRoutes() {
       <Routes>
         <Route path="/" element={<Navigate to="/cars" replace />} />
 
-        {/* Pubbliche */}
+        {/* Pagine login/register (non servono più, ma le lasciamo finché non le elimini) */}
         <Route path="/login" element={<Layout><Login /></Layout>} />
         <Route path="/register" element={<Layout><Register /></Layout>} />
-        <Route path="/cars" element={<Layout><Cars /></Layout>} />
 
-        {/* Protette */}
-        <Route
-          path="/cars/:id"
-          element={
-            <Layout>
-              <RequireAuth>
-                <CarDetail />
-              </RequireAuth>
-            </Layout>
-          }
-        />
+        {/* Pubbliche */}
+        <Route path="/cars" element={<Layout><Cars /></Layout>} />
+        <Route path="/cars/:id" element={<Layout><CarDetail /></Layout>} />
+
+        {/* Create new car → protetta */}
         <Route
           path="/cars/new"
           element={
@@ -92,6 +113,8 @@ function AppRoutes() {
             </Layout>
           }
         />
+
+        {/* Edit → protetta */}
         <Route
           path="/cars/edit/:id"
           element={
@@ -103,7 +126,7 @@ function AppRoutes() {
           }
         />
 
-        {/* 👇 nuova rotta protetta: Il mio garage */}
+        {/* My garage → protetta */}
         <Route
           path="/my-garage"
           element={
@@ -123,6 +146,7 @@ function AppRoutes() {
 // Inizializzazione Clerk + React
 // ===============================
 const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
+
 if (!PUBLISHABLE_KEY) {
   throw new Error('VITE_CLERK_PUBLISHABLE_KEY non definita');
 }

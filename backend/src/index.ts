@@ -158,13 +158,14 @@ app.get('/cars/:id', async (req, res) => {
   res.json(car);
 });
 
-// AGGIORNA (PUT) — per "Modifica"
+//VEDERE SE ELIMINARE
+/* // AGGIORNA (PUT) — per "Modifica"
 app.put('/cars/:id', async (req, res) => {
   const id = Number(req.params.id);
   if (Number.isNaN(id)) return res.status(400).json({ error: 'Invalid id' });
   const car = await prisma.car.update({ where: { id }, data: req.body });
   res.json(car);
-});
+}); */
 
 // DELETE /cars/:id  → elimina un veicolo
 app.delete('/cars/:id', async (req, res) => {

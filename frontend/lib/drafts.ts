@@ -1,20 +1,34 @@
 // frontend/src/lib/drafts.ts
 export type DraftCar = {
-  id: string;                  // uuid locale
+  id: string;
   createdAt: number;
+
+  // campi principali
   make: string;
   model: string;
+  title?: string;
   year: number;
-  title?: string;        // 👈 nuovo campo
   fuelType?: string;
   horsepower?: number;
   mileageKm?: number;
-  photos: string[];            // può contenere dataURL base64
-  coverUrl?: string;           // può essere anch’essa dataURL
   description?: string;
+  coverUrl?: string;
+  photos?: string[];
+
+  // 🔽 campi aggiuntivi opzionali
+  color?: string;
+  torqueNm?: number;
+  drivetrain?: string;
+  transmission?: string;
+  seats?: number;
+  doors?: number;
+  priceEur?: number;
+  engine?: string;
+  trimLevel?: string;
   latitude?: number;
   longitude?: number;
 };
+
 
 const KEY = 'ascari.drafts';
 

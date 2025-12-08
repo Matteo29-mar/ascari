@@ -167,3 +167,126 @@ prossimi step
 - se sono senza utente e faccio dettaglio prodotot mi fa la login, no dev riuscire a vedere solo quello se faccio altro si login
 - implementare i mi piace e non mi paice che c' già il codice bozza ma non funzioanante e implementare le rotte
 
+-------------------------
+update 13/11/2025
+obietivi giornata
+1. Incominciare a vedere cambio utente autenticato le auto degli altri 
+2. far vedere a chi non è loggato almeno il dettaglio auto 
+
+resoconto giornata
+1. sistemato il cambio utente, il problema era il seguente quando creavi un'auto con utente A potevi fare tutto
+    Quando ti loggavi con utente B vedevi ma in realtà non faceva nulla applicazione andava in crash, faceva il cambio
+    ma non un effettivo cambio, quindi quando creavi un'auto nuova si dissociava dal DB e andava in bozza "oscurando"
+    le auto online e andando offline. Quando tornavi con utente A risincronizzava anche le auto in bozza e le metteva online.
+    Questo perché ne l authuser.ts è stata modificata una proprietà ovvero che se non è registrato effettivamente lo registra
+    Ora funziona funziona il cambio e le viste delle auto.
+2. se non sei loggato vedi i dettagli della auto. Era bloccato lato frontend da un requireauth nel main.tsx
+
+prossimi step
+- implementare i mi piace e non mi paice che c' già il codice bozza ma non funzioanante e implementare le rotte
+- sistemare interfaccia frontend con dei tasti più sensati e carini
+- incominciare a vedere per le offerte e messaggi 
+
+---------------------------------------
+update 19/11/2025
+obiettivi gioranta:
+1. sistemare tasto cerca e localizzazione
+2. aggiungere una tendina facoltativa con informazioni aggiuntive
+3. eliminare tasti di duplicazione
+
+resoconto gioranta
+1. sistemato la rotta del cerca, non c'era la rotta di cerca e il frontend passava delle informazioni errate
+2. aggiunto tendina facoltativa, ora in fase di creazione e update puoi scegliere se mettere o meno i dati facoltativi.
+
+aggiunto di funzionante
+- cerca con frontend e rotta backend aggiornati
+- creato un file additionalField.tsx per i dettagli e aggiunta e modificato i file carnew, caredit e draft per permettere
+    arrivo dei campi facoltativi
+
+cose non funzionanti
+    - se aggiunngo i dati in una scheda, esempio il cambio lo vedo ma se lo cancello non lo cancella ma update del campo funziona
+
+-----------------------------------
+
+SAL 21-11-2025
+cosa esce:
+    - tasto da cercare funzionante
+    - creato e funzionante tasto di informazioni aggiuntive facoltative creato e funzionante. Funziona anche update
+
+
+cose da fare lato web app(fix)
+    - se aggiunngo i dati in una scheda, esempio il cambio lo vedo ma se lo cancello non lo cancella ma update del campo funziona
+    - eliminare tasti duplicati
+
+Aggiunte da fare:
+    - posizione auto prendere spunto da autoscout24
+
+Aggiunte da fare ad applicazione conclusa:
+    - quando applicazione sarà finita e funzioanante prendere in considerazione l'idea di chiamare un designe di siti/webapp
+    - cerca per marca stile autoscout
+
+-----------------------------------------------------
+
+update 26/11/2025
+obiettivi gioranta
+1. fix update della scheda non aggiorna se non metto nulla non aggiorna e lascia i vecchi dati
+2. eliminare tasti ducplicati
+
+resconto giornata
+1. il problema stava nel frontend car.edit.tsx che mandava un payload sbagliato, ho anche tolto una rotta put che andava in conflitto 
+    nel index.ts e lasciato solo la cars.ts  
+    costruivo il payload color: color || undefined, quindi se vuoto restituisce undefined ovvero torna quello che c'era 
+    costruito in modo tale che accetti i null color: color === '' ? null : color, fatto anche per gli altri campi 
+
+2. tolto il tasto doppio il mio garage
+
+Aggiunto
+3. creato sistema like e non like, funziona.
+
+da modificare 
+- grafica del like/dislike
+- aggiungere migliorie like/dislike come tolgo il like si deve togliere dalla pagina in automatica non che devo refreshare io 
+    la pagina o cambiare
+- nella schermata delle auto le auto le devo vedere con il like non che sia vuoto ma che in realtà c'è
+- se utente dimentica l'immagine, e poi tenta di modificare quindi caricare, non lo fa fare rimane nero con il placeholder
+- aggiungere nelle aggiuntive backend allestimento, c'è nel frontend ma non nel backend
+- l'errore della creazione della scheda con immagine (bugatti) sta dando problemi ad eliminare la scheda
+
+--------------------------------
+update 2/12/2025
+1. mettere minimo 1 immagine per la creazione
+2. aggiustare update photo della scheda auto 
+
+
+resoconto gioranta
+1. messo pop up per mettere alemno 1 immagine 
+2. aggioranato il caredit e il cars.ts per gestire update, per farla breve non passavo dal frontend al backend il corpo delle nuove immagini
+    in più ho cambiato la logica ora se togli immagini esempio quella di cover, la seconda diventa di cover
+3. aggioranto la logica like, non teneva la sessione del like associato all'utente 
+
+
+---------
+sal 06/12/2025
+
+cose da modificare:
+1. se non sei loggato, il like o non si vede oppure ti rimanda al tasto accedi
+2. spostare tasto reset affianco alla barra di reicerca
+3. oscurare id delle schede
+4. togliere il vecchio redirect sulla login e mostrare pop up clerk
+
+
+update 08/12/2025
+
+obiettivi giornata 
+1. se non sei loggato, il like o non si vede oppure ti rimanda al tasto accedi
+2. spostare tasto reset affianco alla barra di reicerca
+3. oscurare id delle schede
+4. togliere il vecchio redirect sulla login e mostrare pop up clerk
+
+
+resconto 
+1. fatta modifica c'erano due notazioni sbagliate !IsMine metteva una negazione all'operatore e faceva vedere solo le tue, quindi tradotto non tue e tutte sempre
+    modifica fatta è IsSignedId senza !, tradotto non vedere cuori se non sei loggato.
+2. spostato tasto reset vicino al cerca 
+3. oscurato dal frontend il tasto ID 
+4. aggiustato il tasto il tasto redirect non c'è più la redirct login e register ma subito la login con clerk
