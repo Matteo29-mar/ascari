@@ -17,11 +17,15 @@ router.post('/', async (req, res) => {
     return res.status(401).json({ error: 'Not authenticated' });
   }
 
-  const email = sessionClaims?.email as string | undefined;
-  const name = (sessionClaims as any)?.fullName || undefined;
-  const user = await ensureUserInDb(clerkUserId, email, name);
+  try {
+    // prendo email e nome dai claim della sessione Clerk
+    const email = sessionClaims?.email as string | undefined;
+    const name = (sessionClaims as any)?.fullName || undefined;
 
-      const {
+    // ⬇️ ora ensureUserInDb RITORNA SEMPRE un User valido
+    const user = await ensureUserInDb(clerkUserId, email ?? null, name ?? null);
+
+    const {
       make,
       model,
       title,
@@ -36,11 +40,10 @@ router.post('/', async (req, res) => {
 
     // 🔑 fallback sicuro per il titolo
     const finalTitle =
-      (typeof title === 'string' && title.trim().length > 0)
+      typeof title === 'string' && title.trim().length > 0
         ? title.trim()
         : [make, model, year].filter(Boolean).join(' ') || 'Nuova auto';
 
-  try {
     const car = await prisma.car.create({
       data: {
         make,
@@ -52,8 +55,8 @@ router.post('/', async (req, res) => {
         mileageKm,
         description,
         coverUrl,
-        photos,       // 👈 array di immagini (se nel modello è tipo Json)
-        ownerId: user.id,
+        photos, // String[] come da schema
+        ownerId: user.id, // ✅ sempre definito
       },
     });
 
@@ -65,21 +68,120 @@ router.post('/', async (req, res) => {
 });
 
 /**
- * GET /api/cars
- * ✅ Tutte le auto (visibili pubblicamente)
+ * GET /api/cars/search
+ * 🔍 Cerca auto per marca, modello o titolo
  */
-router.get('/', async (_req, res) => {
+router.get('/search', async (req, res) => {
+  const query = String(req.query.query || '').trim();
+
+  if (!query) {
+    return res.status(200).json([]); // nessun termine → nessun errore
+  }
+
   try {
     const cars = await prisma.car.findMany({
+      where: {
+        OR: [
+          { make: { contains: query, mode: 'insensitive' } },
+          { model: { contains: query, mode: 'insensitive' } },
+          { title: { contains: query, mode: 'insensitive' } },
+        ],
+      },
       include: { owner: true },
       orderBy: { createdAt: 'desc' },
     });
+
     return res.json(cars);
+  } catch (err) {
+    console.error('GET /api/cars/search error:', err);
+    return res.status(500).json({ error: 'Search error' });
+  }
+});
+
+/**
+ * GET /api/cars/nearby
+ * 📍 Mostra le auto nel raggio indicato
+ * es: /api/cars/nearby?lat=45.32&lon=8.42&radius=5
+ */
+router.get('/nearby', async (req, res) => {
+  const lat = parseFloat(String(req.query.lat));
+  const lon = parseFloat(String(req.query.lon));
+  const radiusKm = parseFloat(String(req.query.radius || '5'));
+
+  if (isNaN(lat) || isNaN(lon)) {
+    return res.status(400).json({ error: 'Invalid coordinates' });
+  }
+
+  try {
+    const cars = await prisma.$queryRawUnsafe(`
+      SELECT *, 
+        (
+          6371 * acos(
+            cos(radians(${lat})) * 
+            cos(radians(latitude)) *
+            cos(radians(longitude) - radians(${lon})) +
+            sin(radians(${lat})) * sin(radians(latitude))
+          )
+        ) AS distance
+      FROM "Car"
+      WHERE latitude IS NOT NULL AND longitude IS NOT NULL
+      HAVING distance <= ${radiusKm}
+      ORDER BY distance ASC;
+    `);
+
+    return res.json(cars);
+  } catch (err) {
+    console.error('GET /api/cars/nearby error:', err);
+    return res.status(500).json({ error: 'Nearby search error' });
+  }
+});
+
+
+
+/**
+ * GET /api/cars
+ * 🔥 Tutte le auto, con info se l'utente ha messo “like”
+ */
+router.get('/', async (req, res) => {
+  try {
+    const { userId: clerkUserId } = getAuth(req);
+
+    let user = null;
+
+    // Se è loggato, prendo l'utente dal DB
+    if (clerkUserId) {
+      user = await prisma.user.findUnique({
+        where: { clerkId: clerkUserId },
+      });
+    }
+
+    
+    // Prendo tutte le auto
+    const cars = await prisma.car.findMany({
+      include: user
+        ? {
+            owner: true,
+            likes: {
+              where: { userId: user.id },
+            },
+          }
+        : { owner: true },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    // Aggiungo likedByMe
+    const result = cars.map((c: any) => ({
+      ...c,
+      likedByMe: user ? c.likes?.length > 0 : false,
+    }));
+
+    return res.json(result);
   } catch (e) {
     console.error('GET /api/cars error:', e);
     return res.status(500).json({ error: 'Error fetching cars' });
   }
 });
+
 
 /**
  * GET /api/cars/my-garage
@@ -120,12 +222,29 @@ router.get('/my-garage', async (req, res) => {
       orderBy: { createdAt: 'desc' },
     });
 
+      const myCarsWithLikes = myCars.map(c => ({
+        ...c,
+        likedByMe: c.likes.length > 0,
+      }));
+
+      const likedCarsWithLikes = likedCars.map(c => ({
+        ...c,
+        likedByMe: true,
+      }));
+
+      return res.json({
+        myCars: myCarsWithLikes,
+        likedCars: likedCarsWithLikes,
+      });
+
+
     return res.json({ myCars, likedCars });
   } catch (err) {
     console.error('GET /api/cars/my-garage error:', err);
     return res.status(500).json({ error: 'Error fetching my garage' });
   }
 });
+
 
 /**
  * GET /api/cars/:id
@@ -255,7 +374,7 @@ router.put('/:id', async (req, res) => {
   }
 
   try {
-    // 1) prendo l'utente dal DB tramite clerkId
+    // ✔ Trova utente
     const user = await prisma.user.findUnique({
       where: { clerkId: clerkUserId },
     });
@@ -264,7 +383,7 @@ router.put('/:id', async (req, res) => {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    // 2) prendo l'auto
+    // ✔ Trova auto
     const car = await prisma.car.findUnique({
       where: { id: carId },
     });
@@ -273,15 +392,53 @@ router.put('/:id', async (req, res) => {
       return res.status(404).json({ error: 'Car not found' });
     }
 
-    // 3) controllo proprietà confrontando ownerId con user.id (NON con clerkUserId)
+    // ✔ Controllo permessi
     if (car.ownerId !== user.id) {
       return res.status(403).json({ error: 'Not allowed to edit this car' });
     }
 
-    // 4) aggiorno l’auto
+    // ⭐ Normalizzatore per nullable
+    const normalize = (v: any) => (v === '' ? null : v);
+
+    // ⭐ FISSA: aggiorniamo TUTTI i campi arrivati dal frontend
+    const data: any = {
+      make: normalize(req.body.make),
+      model: normalize(req.body.model),
+      title: normalize(req.body.title),
+      year: normalize(req.body.year),
+      fuelType: normalize(req.body.fuelType),
+      horsepower: normalize(req.body.horsepower),
+      mileageKm: normalize(req.body.mileageKm),
+      description: normalize(req.body.description),
+
+      engine: normalize(req.body.engine),
+      trimLevel: normalize(req.body.trimLevel),
+      color: normalize(req.body.color),
+      drivetrain: normalize(req.body.drivetrain),
+      transmission: normalize(req.body.transmission),
+      torqueNm: normalize(req.body.torqueNm),
+      seats: normalize(req.body.seats),
+      doors: normalize(req.body.doors),
+      priceEur: normalize(req.body.priceEur),
+    };
+
+    // ⭐ AGGIORNAMENTO FOTO
+    if (Array.isArray(req.body.photos)) {
+      data.photos = req.body.photos; // ⬅️ salva array completo
+    }
+
+    // ⭐ FIX COVER
+    data.coverUrl =
+      typeof req.body.coverUrl === 'string' && req.body.coverUrl.trim() !== ''
+        ? req.body.coverUrl
+        : Array.isArray(req.body.photos) && req.body.photos.length > 0
+        ? req.body.photos[0]
+        : car.coverUrl;
+
+    // ⭐ Ora aggiorno davvero tutto
     const updated = await prisma.car.update({
       where: { id: carId },
-      data: req.body,
+      data,
     });
 
     return res.json(updated);
@@ -290,6 +447,8 @@ router.put('/:id', async (req, res) => {
     return res.status(500).json({ error: 'Error updating car' });
   }
 });
+
+
 
 
 /**

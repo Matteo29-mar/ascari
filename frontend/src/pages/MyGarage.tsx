@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { useAuth, SignedIn, SignedOut, RedirectToSignIn } from '@clerk/clerk-react';
 import { getMyGarage } from '../api';
 import { Link } from 'react-router-dom';
+import LikeButton from "../components/LikeButton";
 
 type Car = {
   id: number;
@@ -10,10 +11,10 @@ type Car = {
   make: string;
   model: string;
   year: number;
-
-  // 👇 aggiunti per immagini
   coverUrl?: string | null;
   photos?: string[] | null;
+  likedByMe?: boolean;
+  likes?: { id: string }[];        // 👈 per conteggio like
 };
 
 type MyGarageResponse = {
@@ -22,7 +23,7 @@ type MyGarageResponse = {
 };
 
 function MyGarageContent() {
-  const { getToken } = useAuth();
+  const { getToken, userId } = useAuth();
   const [data, setData] = useState<MyGarageResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -30,17 +31,15 @@ function MyGarageContent() {
   useEffect(() => {
     (async () => {
       try {
-        setError(null);
         const token = await getToken();
         if (!token) {
-          setError('Nessun token di autenticazione trovato.');
+          setError("Utente non autenticato");
           return;
         }
         const res = await getMyGarage(token);
         setData(res);
       } catch (e: any) {
-        const msg = e?.response?.data?.error || e?.message || 'Errore caricamento garage';
-        setError(msg);
+        setError(e?.message || "Errore caricamento garage");
       } finally {
         setLoading(false);
       }
@@ -55,40 +54,37 @@ function MyGarageContent() {
     <div style={{ padding: '2rem 1rem' }}>
       <h1 style={{ marginBottom: '1.5rem' }}>Il mio garage</h1>
 
-      {/* --- LE MIE AUTO --- */}
+      {/* === LE MIE AUTO === */}
       <section>
         <h2>Le mie auto</h2>
         {data.myCars.length === 0 && <p>Non hai ancora caricato auto.</p>}
 
         <div className="grid">
-          {data.myCars.map((car) => {
+          {data.myCars.map(car => {
             const imgSrc =
               car.coverUrl ||
               (car.photos && car.photos[0]) ||
-              '/cars/placeholder.jpg'; // 👈 come nella lista principale
+              "/cars/placeholder.jpg";
 
             return (
               <article key={car.id} className="card">
-                <div className="card-image-wrapper">
-                  <img
-                    src={imgSrc}
-                    alt={car.title}
-                    className="card-image"
-                  />
-                </div>
+                <img src={imgSrc} className="card-image" />
 
                 <div className="card-body">
                   <h3>{car.title}</h3>
-                  <p>
-                    {car.make} {car.model} ({car.year})
-                  </p>
+                  <p>{car.make} {car.model} ({car.year})</p>
 
                   <div className="card-actions">
-                    {/* Dettaglio modello */}
-                    <Link to={`/cars/${car.id}`} className="btn btn-outline">
+                    <Link className="btn" to={`/cars/${car.id}`}>
                       Dettaglio modello
                     </Link>
 
+                    {/* ❤️ il proprietario NON può mettere like alla propria auto */}
+                    <LikeButton
+                      carId={car.id}
+                      initialLiked={car.likedByMe ?? false}
+                      disabled={true}
+                    />
                   </div>
                 </div>
               </article>
@@ -97,36 +93,35 @@ function MyGarageContent() {
         </div>
       </section>
 
-      {/* --- AUTO CHE MI PIACCIONO --- */}
-      <section style={{ marginTop: '2.5rem' }}>
+      {/* === AUTO CHE MI PIACCIONO === */}
+      <section style={{ marginTop: "2.5rem" }}>
         <h2>Le auto che mi piacciono</h2>
         {data.likedCars.length === 0 && <p>Non hai ancora messo Mi piace.</p>}
 
         <div className="grid">
-          {data.likedCars.map((car) => {
+          {data.likedCars.map(car => {
             const imgSrc =
               car.coverUrl ||
               (car.photos && car.photos[0]) ||
-              '/cars/placeholder.jpg';
+              "/cars/placeholder.jpg";
 
             return (
               <article key={car.id} className="card">
-                <div className="card-image-wrapper">
-                  <img
-                    src={imgSrc}
-                    alt={car.title}
-                    className="card-image"
-                  />
-                </div>
+                <img src={imgSrc} className="card-image" />
 
                 <div className="card-body">
                   <h3>{car.title}</h3>
-                  <p>
-                    {car.make} {car.model} ({car.year})
-                  </p>
+                  <p>{car.make} {car.model} ({car.year})</p>
 
                   <div className="card-actions">
-                    <Link to={`/cars/${car.id}`} className="btn btn-outline">
+
+                    {/* ❤️ qui l'utente può rimuovere il like */}
+                    <LikeButton
+                      carId={car.id}
+                      initialLiked={true}
+                    />
+
+                    <Link className="btn" to={`/cars/${car.id}`}>
                       Dettaglio modello
                     </Link>
                   </div>
