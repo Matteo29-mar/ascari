@@ -12,6 +12,9 @@ type Car = {
   model: string;
   title: string;
   year: number;
+  offerPrice1: number,
+  offerPrice2: number,
+  offerPrice3: number,
   fuelType?: string | null;
   horsepower?: number | null;
   mileageKm?: number | null;
@@ -48,6 +51,11 @@ export default function CarEdit() {
   const [description, setDescription] = useState('');
   const [coverUrl, setCoverUrl] = useState<string>('');
   const [photos, setPhotos] = useState<string[]>([]);
+  // ⭐ Prezzi accettati (obbligatori)
+  const [offerPrice1, setOfferPrice1] = useState<number>(0);
+  const [offerPrice2, setOfferPrice2] = useState<number>(0);
+  const [offerPrice3, setOfferPrice3] = useState<number>(0);
+
 
   const [color, setColor] = useState('');
   const [torqueNm, setTorqueNm] = useState<number | ''>('');
@@ -83,6 +91,7 @@ export default function CarEdit() {
         // ⭐ FIX COVER: se non c'è cover, prendo la prima foto
         setCoverUrl(data.coverUrl || (data.photos?.[0] ?? ''));
         setPhotos(Array.isArray(data.photos) ? data.photos : []);
+        
 
         setColor(data.color || '');
         setTorqueNm((data.torqueNm ?? '') as any);
@@ -93,6 +102,11 @@ export default function CarEdit() {
         setPriceEur((data.priceEur ?? '') as any);
         setEngine(data.engine || '');
         setTrimLevel(data.trimLevel || '');
+        // ⭐ PREZZI ACCETTATI
+        setOfferPrice1(data.offerPrice1 ?? 0);
+        setOfferPrice2(data.offerPrice2 ?? 0);
+        setOfferPrice3(data.offerPrice3 ?? 0);
+
       } catch (e: any) {
         setErr(
           e?.response?.data?.error ||
@@ -176,6 +190,10 @@ export default function CarEdit() {
       engine: engine === '' ? null : engine,
       trimLevel: trimLevel === '' ? null : trimLevel,
       color: color === '' ? null : color,
+      // ⭐ NUOVI 3 PREZZI OBBLIGATORI
+      offerPrice1: Number(offerPrice1),
+      offerPrice2: Number(offerPrice2),
+      offerPrice3: Number(offerPrice3),
     };
 
     try {
@@ -375,6 +393,41 @@ export default function CarEdit() {
             </div>
           </div>
         </section>
+
+        <section className="card" style={{ minHeight: 260 }}>
+        <div className="card-body">
+          <h3>Prezzi accettati</h3>
+          <p className="muted">Inserisci i 3 prezzi che sei disposto ad accettare</p>
+
+          <input
+            className="input"
+            type="number"
+            placeholder="Prezzo 1"
+            value={offerPrice1}
+            onChange={(e) => setOfferPrice1(Number(e.target.value))}
+            required
+          />
+
+          <input
+            className="input"
+            type="number"
+            placeholder="Prezzo 2"
+            value={offerPrice2}
+            onChange={(e) => setOfferPrice2(Number(e.target.value))}
+            required
+          />
+
+          <input
+            className="input"
+            type="number"
+            placeholder="Prezzo 3"
+            value={offerPrice3}
+            onChange={(e) => setOfferPrice3(Number(e.target.value))}
+            required
+          />
+        </div>
+        </section>
+
       </div>
 
       <AdditionalFields

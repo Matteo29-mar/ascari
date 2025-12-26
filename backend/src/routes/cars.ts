@@ -30,6 +30,9 @@ router.post('/', async (req, res) => {
       model,
       title,
       year,
+      offerPrice1,
+      offerPrice2,
+      offerPrice3,
       fuelType,
       horsepower,
       mileageKm,
@@ -38,6 +41,9 @@ router.post('/', async (req, res) => {
       photos,
     } = req.body;
 
+    if (!offerPrice1 || !offerPrice2 || !offerPrice3) {
+      return res.status(400).json({ error: "I tre prezzi sono obbligatori" });
+    }
     // 🔑 fallback sicuro per il titolo
     const finalTitle =
       typeof title === 'string' && title.trim().length > 0
@@ -50,6 +56,9 @@ router.post('/', async (req, res) => {
         model,
         title: finalTitle,
         year,
+        offerPrice1: Number(offerPrice1),
+        offerPrice2: Number(offerPrice2),
+        offerPrice3: Number(offerPrice3),
         fuelType,
         horsepower,
         mileageKm,
@@ -97,6 +106,47 @@ router.get('/search', async (req, res) => {
     return res.status(500).json({ error: 'Search error' });
   }
 });
+
+/**
+ * GET /cars/filter
+ * Case-insensitive filtering
+ */
+router.get("/filter", async (req, res) => {
+  let brands = req.query.brands?.toString().split(",").filter(Boolean) || [];
+  let models = req.query.models?.toString().split(",").filter(Boolean) || [];
+
+  try {
+    const cars = await prisma.car.findMany({
+      where: {
+        AND: [
+          brands.length
+            ? {
+                OR: brands.map((b) => ({
+                  make: { equals: b, mode: "insensitive" },
+                })),
+              }
+            : {},
+          models.length
+            ? {
+                OR: models.map((m) => ({
+                  model: { equals: m, mode: "insensitive" },
+                })),
+              }
+            : {},
+        ],
+      },
+      include: { owner: true },
+    });
+
+    res.json(cars);
+  } catch (e) {
+    console.error("Errore filtro auto:", e);
+    res.status(500).json({ error: "Errore filtraggio" });
+  }
+});
+
+
+
 
 /**
  * GET /api/cars/nearby
@@ -200,9 +250,14 @@ router.get('/my-garage', async (req, res) => {
       where: { clerkId: clerkUserId },
     });
 
+    // ✅ dopo
     if (!user) {
-      return res.status(404).json({ error: 'User not found' });
+      return res.json({
+        myCars: [],
+        likedCars: [],
+      });
     }
+
 
     // ✅ Auto create da me
     const myCars = await prisma.car.findMany({
@@ -237,8 +292,6 @@ router.get('/my-garage', async (req, res) => {
         likedCars: likedCarsWithLikes,
       });
 
-
-    return res.json({ myCars, likedCars });
   } catch (err) {
     console.error('GET /api/cars/my-garage error:', err);
     return res.status(500).json({ error: 'Error fetching my garage' });
@@ -397,6 +450,17 @@ router.put('/:id', async (req, res) => {
       return res.status(403).json({ error: 'Not allowed to edit this car' });
     }
 
+    const { offerPrice1, offerPrice2, offerPrice3 } = req.body;
+
+    if (
+      offerPrice1 === undefined ||
+      offerPrice2 === undefined ||
+      offerPrice3 === undefined
+    ) {
+      return res.status(400).json({ error: "I tre prezzi sono obbligatori" });
+    }
+
+
     // ⭐ Normalizzatore per nullable
     const normalize = (v: any) => (v === '' ? null : v);
 
@@ -421,6 +485,10 @@ router.put('/:id', async (req, res) => {
       doors: normalize(req.body.doors),
       priceEur: normalize(req.body.priceEur),
     };
+    data.offerPrice1 = Number(offerPrice1);
+    data.offerPrice2 = Number(offerPrice2);
+    data.offerPrice3 = Number(offerPrice3);
+
 
     // ⭐ AGGIORNAMENTO FOTO
     if (Array.isArray(req.body.photos)) {
@@ -479,6 +547,16 @@ router.delete('/:id', async (req, res) => {
 
     if (!car) {
       return res.status(404).json({ error: 'Car not found' });
+    }
+
+    const offerCount = await prisma.offer.count({
+      where: { carId: carId }
+    });
+
+    if (offerCount > 0) {
+      return res.status(400).json({
+        error: "Non puoi eliminare un'auto che ha offerte attive o passate."
+      });
     }
 
     // 🚫 non è la sua → 403

@@ -7,6 +7,8 @@ import Carousel from '../components/Carousel/Carousel';
 import { loadDrafts, removeDraft, DraftCar } from '../../lib/drafts';
 import { useAuth, useClerk } from '@clerk/clerk-react';
 import LikeButton from "../components/LikeButton";
+import SearchBar from "../components/Search/SearchBar";
+
 
 type Car = {
   id: number;
@@ -124,6 +126,31 @@ export default function Cars() {
     }
   }
 
+  // ricerca avanzata
+  async function searchAdvanced(filters: { brands: string[]; models: string[] }) {
+  setLoading(true);
+  setErr(null);
+
+  try {
+    const token = await getToken();
+
+    const { data } = await http.get<Car[]>("/cars/filter", {
+      params: {
+        brands: filters.brands.join(","),   // Es: "Ferrari,Bugatti"
+        models: filters.models.join(","),   // Es: "458,Chiron"
+      },
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+
+    setList(data);
+  } catch (e: any) {
+    setErr(e?.message || "Errore filtri");
+  } finally {
+    setLoading(false);
+  }
+}
+
+
   // 📍 geolocalizzazione
   async function nearby() {
     setErr(null);
@@ -203,7 +230,12 @@ export default function Cars() {
     <div>
       <h1 className="h1">Auto disponibili</h1>
       <p className="muted">Cerca un modello oppure mostra i veicoli nelle vicinanze.</p>
-
+      <SearchBar
+        onSearch={(filters) => {
+          // filters = { brands: [...], models: [...] }
+          searchAdvanced(filters);
+        }}
+      />
       {/* 🔍 toolbar */}
       <div className="toolbar">
         <input

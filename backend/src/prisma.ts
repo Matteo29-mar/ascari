@@ -1,4 +1,5 @@
-// backend/src/prisma.ts
 import { PrismaClient } from '@prisma/client';
 
 export const prisma = new PrismaClient();
+
+console.log("Modelli Prisma disponibili:", Object.keys(prisma));

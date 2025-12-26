@@ -15,8 +15,13 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  cars      Car[]
-  likes     Like[]
+  cars  Car[]
+  likes Like[]
+
+  // OFFERTE
+  buyerOffers  Offer[]   @relation("BuyerOffers")
+  sellerOffers Offer[]   @relation("SellerOffers")
+  messages     Message[] // 👈 QUESTO MANCAVA
 }
 
 model Car {
@@ -26,7 +31,10 @@ model Car {
   title String
   year  Int
 
-  // --- DETTAGLI ---
+  offerPrice1 Int?
+  offerPrice2 Int?
+  offerPrice3 Int?
+
   trimLevel    String?
   priceEur     Int?
   color        String?
@@ -43,24 +51,24 @@ model Car {
   photos       String[]
   coverUrl     String?
 
-  // --- POSIZIONE ---
+  // RELAZIONE con Offer
+  offers Offer[] @relation("CarOffers")
+
   latitude  Float?
   longitude Float?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // relazione con l'utente
-  ownerId String  @map("owner_id")
-  owner   User    @relation(fields: [ownerId], references: [id])
+  ownerId String @map("owner_id")
+  owner   User   @relation(fields: [ownerId], references: [id])
 
-  likes   Like[]
+  likes Like[]
 
   @@index([make, model])
   @@index([latitude, longitude])
   @@index([ownerId])
 }
-
 
 model Like {
   id        String   @id @default(cuid())
@@ -68,8 +76,51 @@ model Like {
   carId     Int
   createdAt DateTime @default(now())
 
-  user      User @relation(fields: [userId], references: [id])
-  car       Car  @relation(fields: [carId], references: [id])
+  user User @relation(fields: [userId], references: [id])
+  car  Car  @relation(fields: [carId], references: [id])
 
   @@unique([userId, carId]) // uno stesso utente non può mettere "mi piace" due volte alla stessa auto
+}
+
+model Offer {
+  id        Int      @id @default(autoincrement())
+  carId     Int
+  buyerId   String
+  sellerId  String
+  amount    Int
+  status    String   @default("PENDING")
+  createdAt DateTime @default(now())
+
+  buyer  User @relation("BuyerOffers", fields: [buyerId], references: [id])
+  seller User @relation("SellerOffers", fields: [sellerId], references: [id])
+  car    Car  @relation("CarOffers", fields: [carId], references: [id])
+
+  chat Chat? @relation("OfferChat")
+}
+
+model Chat {
+  id        Int       @id @default(autoincrement())
+  offerId   Int       @unique
+  carId     Int
+  buyerId   String
+  sellerId  String
+  createdAt DateTime  @default(now())
+  
+
+  messages Message[]
+
+  offer Offer @relation("OfferChat", fields: [offerId], references: [id])
+}
+
+model Message {
+  id        Int      @id @default(autoincrement())
+  content   String
+  createdAt DateTime @default(now())
+  readAt    DateTime? // 👈 null = non letto
+
+  chatId Int
+  chat   Chat @relation(fields: [chatId], references: [id], onDelete: Cascade)
+
+  senderId String
+  sender   User   @relation(fields: [senderId], references: [id])
 }
