@@ -1,0 +1,55 @@
+.search-box {
+  background: #111;
+  padding: 20px;
+  border-radius: 12px;
+  border: 1px solid #222;
+  margin-bottom: 20px;
+}
+
+.search-header {
+  display: flex;
+  gap: 10px;
+}
+
+.dropdown-panel {
+  margin-top: 15px;
+  padding: 15px;
+  background: #1a1a1a;
+  border-radius: 10px;
+  border: 1px solid #333;
+}
+
+.brand-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 12px;
+}
+
+.brand-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #222;
+  padding: 8px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.brand-logo {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+}
+
+.model-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.model-item {
+  background: #222;
+  padding: 6px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+}

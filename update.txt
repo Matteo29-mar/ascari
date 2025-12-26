@@ -290,3 +290,99 @@ resconto
 2. spostato tasto reset vicino al cerca 
 3. oscurato dal frontend il tasto ID 
 4. aggiustato il tasto il tasto redirect non c'è più la redirct login e register ma subito la login con clerk
+
+cose nuove 
+1. creato il sistema cerca per marca e modello  con loghi (prime bozze) con i file serchBAr.tsx e search.css per la grafica e fatta nuova rotta search in cars.ts
+2. aggiunto il logo di ascari 
+
+------------------------------
+update 11/12/2025
+obiettivi giornata
+1. creazione offerta da chi compra
+	utente loggato(utenza con clerk) clicca sulla scheda prodotto clicca su "fai un offerta" si apre un pop up:
+		---------------------------------
+		|  fai un offerta a nome	|
+		| offerta 1: 1000 euro		|
+		| offerta 2: 500 euro		|
+		| offerta 3: 200 euro		|
+		---------------------------------
+	Una volta cliccato su un'offerta appare il messaggio pop up "grazie per aver inviato l'offerta,
+    riceverai risposta dal proprietario". Interazione di chi compra finisce qui, 
+    non si	non si apre nessuna chat con chi vende, ci sarà se verrà accettata l'offerta.
+2. sistemare scheda prodotto
+	utente loggato(utenza clerck) ma chi compra quando crea o aggiorna una scheda prodotto deve mettere 3 prezzi,
+    che serviranno a chi compra per scegliere. fine il resto è uguale.
+3. Interazione
+	chi compra ha mandato richiesta, chi riceve da loggato riceve una notifica. 
+    Questa notifica sarà una sezione simile al "mio garage" chiamata "concessionario" con icona della 	
+	notifica, qui vengono accese le chat, facciamo esempio x fa offerta a y, y deve decidere se accettare. 
+    Se non accetta la chat con x non si apre, se accetta il prezzo dell'offerta o 
+	vuole andare avanti con la conversazione con x. 
+    Una volta che x clicca su accetta si apre la chat con x nella chat con x ci deve essere l'immagine profilo 
+    e il nome ed è a tutti gli	effeti una chat che puoi scrivere, mandare, allegare formati multimediali e ricevere messaggi. 
+    Puoi tornare indietro e nella sezione concessionario vedere tutte le tue chat aperte.
+
+
+resconto giornata
+1. ci sono stati un po di problemi con lo schema prisma( da vedere in futuro un po instabile qunado crei dei nuovi schemi)
+    tasto collegato dal frontend fai unofferta al backend creando oggetti dedicati per frontend offers.tsx, offerreceveid.tsx
+    offerpopup.tsx  e per il backend offers.ts. Funziona ora se clicchi fai un offerta.
+2. fatta la modifica ai due fai di new e update della scheda prodotto, ora utente inseririsce i 3 prezzi che verranno poi visualizzati 
+    dal compratore
+3. integrato il sistema con un navbar delle notifiche delle offerte sempre tramite una modifica sul mai.tsx in cui si vede l'oggeto
+    cliccabile offerte. ora chi compra manda offerta loggata e chi vende vede l'offerta che può accettare o rifiutare.
+    creato il offercontext.tsx Questo permette di condividere il numero di notifiche in tutta l'app in tempo reale.
+    nelle offerte vengono gestiti le liste delle offerte puoi eliminarle e puoi accettarle con l'accetto dell'offerta apre
+    una bozza di chat e scrivi un messaggio
+
+cose da aggiustare
+1. se non metti auto, non puoi vedere il tuo garage e mettere mi piace
+2. eliminare prezzo dal scheda facoltativo
+3. mettere dei flag sul tipo carburante e non scriverlo
+4. mettere fascie prezzo al posto numeri nei prezzi auto
+5. aggiustare se non posto auto nell'utente loggato non mi fa fare offerte 
+
+miglioramenti da fare
+1. portare la chat funzionante
+2. altri tasti 
+
+---------------------------------------------------------------------
+
+update 16/12/2025
+obiettivi giornata
+1. sistemare elimina offerta
+2. far vedere la chat
+3. sistemare che se non metti 
+
+resoconto giornata 
+1. sistameto tasto elimina offerta ora puoi eliminare le vecchie offerte e le chat attive relative a quella offerta vengono
+    eliminate
+2. sistemtato la chat, mancava una rotta API che faceva vedere le liste della chat, ora funziona e mando messaggi
+
+da migliorare 
+1. sistemare se non metti auto 
+
+
+---------------------------------------------------------
+sal 19/12/2025
+1. tasto fai offerta spostare al centro e pop up centro video sopra layer
+2. card chat:
+    nella card della chat singola, inserire tastço indietro
+    nome utente e non email.
+    allegare file(upload) e visualizzare e download 
+3. il contatore alla pagina chat delle notifiche 
+4. auto venduta pensare a cosa, se eliminare automaticamnete offerta, card e chat aperte oppure utente manualmente elimina tutto
+
+--------------------------------------------------------------
+update 24/12/2025
+resconto giornata 
+1. tasto spostato e pop up sopra layer messo
+2. card
+    inserito tasto indietro 
+    inserito nome utente, non era inseririto nel db 
+    inserito un toggle light e dark mode al click
+
+-------------------------------------------------------------
+update 26/12/2025
+obiettivi giornata
+1. inserire campi già compilati per inserire nuova auto 

@@ -33,6 +33,10 @@ export default function CarNew() {
   const [description, setDescription] = useState('');
   const [coverUrl, setCoverUrl] = useState<string>('');
   const [photos, setPhotos] = useState<string[]>([]);
+  const [offerPrice1, setOfferPrice1] = useState<number>(0);
+  const [offerPrice2, setOfferPrice2] = useState<number>(0);
+  const [offerPrice3, setOfferPrice3] = useState<number>(0);
+
 
   // Campi extra
   const [color, setColor] = useState('');
@@ -144,6 +148,10 @@ export default function CarNew() {
       priceEur: priceEur === '' ? undefined : Number(priceEur),
       engine: engine || undefined,
       trimLevel: trimLevel || undefined,
+      offerPrice1,
+      offerPrice2,
+      offerPrice3,
+
     };
 
     try {
@@ -344,6 +352,41 @@ export default function CarNew() {
             </div>
           </div>
         </section>
+
+        <section className="card" style={{ minHeight: 380 }}>
+        <div className="card-body">
+          <h3>Prezzi accettati</h3>
+          <p className="muted">Inserisci i 3 prezzi che sei disposto ad accettare</p>
+
+          <input
+            className="input"
+            type="number"
+            placeholder="Prezzo 1"
+            value={offerPrice1}
+            onChange={(e) => setOfferPrice1(Number(e.target.value))}
+            required
+          />
+
+          <input
+            className="input"
+            type="number"
+            placeholder="Prezzo 2"
+            value={offerPrice2}
+            onChange={(e) => setOfferPrice2(Number(e.target.value))}
+            required
+          />
+
+          <input
+            className="input"
+            type="number"
+            placeholder="Prezzo 3"
+            value={offerPrice3}
+            onChange={(e) => setOfferPrice3(Number(e.target.value))}
+            required
+          />
+        </div>
+        </section>
+
       </div>
 
       {/* 🔽 sezione facoltativa */}

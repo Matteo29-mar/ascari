@@ -6,6 +6,8 @@ import { PrismaClient } from '@prisma/client';
 import { z } from 'zod';
 import { clerkMiddleware } from '@clerk/express';
 import carsRouter from './routes/cars'; 
+import offerRoutes from "./routes/offerts";
+import chatRoutes from "./routes/chat";
 
 
 const app = express();
@@ -38,6 +40,12 @@ app.get('/api/ping', (_req, res) => {
 
 // Router (una sola volta!)
 app.use('/api/cars', carsRouter);
+
+//offerte
+app.use("/api/offers", offerRoutes);
+
+// Chat utente
+app.use("/api/chat", chatRoutes);
 
 
 export default app;
