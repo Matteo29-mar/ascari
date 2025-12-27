@@ -385,4 +385,9 @@ resconto giornata
 -------------------------------------------------------------
 update 26/12/2025
 obiettivi giornata
-1. inserire campi già compilati per inserire nuova auto 
+1. inserire campi già compilati per inserire nuova auto
+
+resoconto giornata
+1. inserito il campo tendina per le marche e carburante, mettendo anche i loghi di riferimento
+
+---------------------------------------------------------------
