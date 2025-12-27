@@ -5,6 +5,9 @@ import { http } from '../api';
 import { useAuth } from '@clerk/clerk-react';
 import AdditionalFields from '../components/AdditionalFields';
 import AscariPopup from '../components/AscariPopup'; // ⭐ AGGIUNTO
+import SelectableGrid from '../components/SelectableGrid';
+import { CAR_BRANDS, FUEL_TYPES } from '../../../backend/src/constants/carOptions';
+import SelectableDropdown from '../components/SelectableDropdown';
 
 type Car = {
   id: number;
@@ -258,12 +261,15 @@ export default function CarEdit() {
               className="row"
               style={{ gap: 8, flexWrap: 'wrap' }}
             >
-              <input
-                className="input"
-                placeholder="Marca"
-                value={make}
-                onChange={(e) => setMake(e.target.value)}
-              />
+              <div style={{ width: '100%' }}>
+                <label className="muted">Marca</label>
+                <SelectableDropdown
+                  label="Marca"
+                  value={make}
+                  options={CAR_BRANDS}
+                  onChange={setMake}
+                />
+              </div>
               <input
                 className="input"
                 placeholder="Modello"
@@ -285,12 +291,15 @@ export default function CarEdit() {
                   setYear(parseInt(e.target.value || '0'))
                 }
               />
-              <input
-                className="input"
-                placeholder="Carburante (es. Benzina)"
-                value={fuelType}
-                onChange={(e) => setFuelType(e.target.value)}
-              />
+              <div style={{ width: '100%', marginTop: 10 }}>
+                <label className="muted">Carburante</label>
+                  <SelectableDropdown
+                    label="Carburante"
+                    value={fuelType}
+                    options={FUEL_TYPES}
+                    onChange={setFuelType}
+                  />
+              </div>
               <input
                 className="input"
                 type="number"
