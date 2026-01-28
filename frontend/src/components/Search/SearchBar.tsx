@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import "./search.css";
-import { CAR_BRANDS, CAR_MODELS_BY_BRAND_KEY } from "../../../../backend/src/constants/carOptions";
+import { CAR_BRANDS, CAR_MODELS_BY_BRAND_KEY } from "../../constants/carOptions";
 
 type Brand = {
   name: string;
