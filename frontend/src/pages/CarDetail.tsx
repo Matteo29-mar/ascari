@@ -2,15 +2,22 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { http } from '../api'
 import Carousel from '../components/Carousel/Carousel'
-import { useAuth } from '@clerk/clerk-react'
+import { useAuth, useClerk } from '@clerk/clerk-react'
 import { useOffers } from "../context/OfferContext";
 
 type Car = {
   id:number; make:string; model:string; year:number; trimLevel?:string|null; offerPrice1:number; offerPrice2:number; offerPrice3:number;
   priceEur?:number|null; color?:string|null; transmission?:string|null; fuelType?:string|null;
-  engine?:string|null; horsepower?:number|null; torqueNm?:number|null; drivetrain?:string|null;
+  engine?:string|null; horsepower?:number|null; mileageKm?:number; torqueNm?:number|null; drivetrain?:string|null;
   seats?:number|null; doors?:number|null; description?:string|null; photos?:string[]|null;
   latitude?:number|null; longitude?:number|null;
+  locationText?: string | null;
+  city?: string | null;
+  country?: string | null;  isPeriziata?: boolean;
+  periziaDocUrl?: string | null;
+  periziaUploadedAt?: string | null;
+
+
 
   // 👇 aggiunto: proprietario dal DB
   owner?: {
@@ -30,7 +37,9 @@ export default function CarDetail() {
   const [thanksPopup, setThanksPopup] = useState(false)
 
   const { userId: clerkUserId, isSignedIn, getToken } = useAuth()
+  const { openSignIn } = useClerk();
   const { reloadOffers } = useOffers()
+  const [openPerizia, setOpenPerizia] = useState(false);
 
   useEffect(() => {
     let mounted = true
@@ -132,6 +141,51 @@ export default function CarDetail() {
     }
   }
 
+  
+
+  async function downloadPerizia() {
+  try {
+    if (!isSignedIn) {
+      openSignIn({
+        redirectUrl: window.location.href, // rimani sulla stessa pagina dopo login
+      });
+      return;
+    }
+
+    const token = await getToken();
+    if (!token) {
+      openSignIn({ redirectUrl: window.location.href });
+      return;
+    }
+
+    const url = `${http.defaults.baseURL}/cars/${car!.id}/perizia/download`;
+
+    const resp = await fetch(url, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    if (!resp.ok) {
+      const data = await resp.json().catch(() => null);
+      throw new Error(data?.error || "Errore download perizia");
+    }
+
+    const blob = await resp.blob();
+    const blobUrl = window.URL.createObjectURL(blob);
+
+    const a = document.createElement("a");
+    a.href = blobUrl;
+    a.download = `perizia_car_${car!.id}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+
+    window.URL.revokeObjectURL(blobUrl);
+  } catch (e: any) {
+    alert(e?.message || "Errore download perizia");
+  }
+}
+
+
   return (
     <div>
       <button className="btn secondary" onClick={() => nav(-1)}>← Indietro</button>
@@ -187,13 +241,14 @@ export default function CarDetail() {
               <Spec label="Motore" value={car.engine} />
               <Spec label="Potenza" value={car.horsepower ? `${car.horsepower} CV` : null} />
               <Spec label="Coppia" value={car.torqueNm ? `${car.torqueNm} Nm` : null} />
+              <Spec label="kilometri" value={car.mileageKm ? `${car.mileageKm} KM` : null} />
               <Spec label="Trazione" value={car.drivetrain} />
               <Spec label="Cambio" value={car.transmission} />
               <Spec label="Alimentazione" value={car.fuelType} />
               <Spec label="Posti" value={car.seats} />
               <Spec label="Porte" value={car.doors} />
               <Spec label="Colore" value={car.color} />
-              <Spec label="Prezzo" value={car.priceEur ? `€ ${car.priceEur.toLocaleString()}` : null} />
+              {/* <Spec label="Prezzo" value={car.priceEur ? `€ ${car.priceEur.toLocaleString()}` : null} /> */}
             </div>
           </div>
         </section>
@@ -212,12 +267,63 @@ export default function CarDetail() {
           <div className="card-body">
             <h3 style={{marginTop:0}}>Posizione</h3>
             <div className="row" style={{gap:18, flexWrap:'wrap'}}>
-              <Spec label="Latitudine" value={car.latitude != null ? car.latitude.toFixed(4) : null} />
-              <Spec label="Longitudine" value={car.longitude != null ? car.longitude.toFixed(4) : null} />
+              <Spec label="Indirizzo" value={car.locationText} />
+              <Spec label="Città" value={car.city} />
+
             </div>
           </div>
         </section>
       </div>
+
+            {/* ✅ PERIZIA (visibile anche senza login) */}
+      <div className="card" style={{ marginTop: 16 }}>
+        <div className="card-body">
+          <button
+            className="btn secondary"
+            style={{
+              width: "100%",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+            }}
+            onClick={() => setOpenPerizia((v) => !v)}
+          >
+            <span>Perizia</span>
+            <span style={{ opacity: 0.8 }}>{openPerizia ? "▲" : "▼"}</span>
+          </button>
+
+          {openPerizia && (
+            <div style={{ marginTop: 12 }}>
+              {!car.isPeriziata ? (
+                <p className="muted" style={{ lineHeight: 1.6 }}>
+                  Auto non ancora periziata, fai un'offerta e raggiungi un accordo per la perizia!!!
+                </p>
+              ) : (
+                <>
+                  <p className="muted" style={{ lineHeight: 1.6 }}>
+                    Auto periziata con successo, scarica il documento.
+                  </p>
+
+                  <button
+                    className="btn"
+                    style={{ marginTop: 10, minWidth: 220, height: 44 }}
+                    onClick={downloadPerizia}
+                  >
+                    Scarica perizia (PDF)
+                  </button>
+
+                  {!isSignedIn && (
+                    <p className="muted" style={{ marginTop: 10 }}>
+                      Devi effettuare il login per scaricare la perizia.
+                    </p>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
 
         {/* ⭐ CTA FAI UN'OFFERTA — SOTTO LE CARD */}
       {isSignedIn && clerkUserId && !isOwner && (

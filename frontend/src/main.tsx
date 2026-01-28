@@ -30,6 +30,8 @@ import "./styles.css";
 import { AuthButtons } from "./components/AuthButtons";
 import { OfferProvider, useOffers } from "./context/OfferContext";
 import { ThemeProvider, useTheme } from "./context/ThemeContext";
+import { SignedIn, SignedOut, RedirectToSignIn } from "@clerk/clerk-react";
+import ExploreMap from "./pages/ExploreMap";
 
 
 // ===============================
@@ -74,6 +76,18 @@ function Layout({ children }: { children: React.ReactNode }) {
 
           {/* NAV ITEMS */}
           <div className="row" style={{ gap: 16, alignItems: "center" }}>
+
+          <button
+            className="btn-link"
+            onClick={() => nav("/explore")}
+            style={{ display: "flex", gap: 8, alignItems: "center" }}
+            title="Esplora sulla mappa"
+          >
+            <span aria-hidden>🔍</span>
+            Esplora
+          </button>
+
+
             <Link to="/cars">Auto</Link>
 
             {isSignedIn && (
@@ -223,6 +237,15 @@ function AppRoutes() {
             </Layout>
           }
         />
+
+              <Route
+              path="/explore"
+              element={
+                <Layout>
+                    <ExploreMap />
+                </Layout>
+              }
+      />
       </Routes>
     </BrowserRouter>
   );

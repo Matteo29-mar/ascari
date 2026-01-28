@@ -8,6 +8,7 @@ import { clerkMiddleware } from '@clerk/express';
 import carsRouter from './routes/cars'; 
 import offerRoutes from "./routes/offerts";
 import chatRoutes from "./routes/chat";
+import path from "path";
 
 
 const app = express();
@@ -46,6 +47,11 @@ app.use("/api/offers", offerRoutes);
 
 // Chat utente
 app.use("/api/chat", chatRoutes);
+
+//uploads
+app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
+
+
 
 
 export default app;

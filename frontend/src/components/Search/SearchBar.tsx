@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import "./search.css";
+import { CAR_BRANDS, CAR_MODELS_BY_BRAND_KEY } from "../../../../backend/src/constants/carOptions";
 
 type Brand = {
   name: string;
@@ -7,58 +8,15 @@ type Brand = {
   models: string[];
 };
 
-const brands: Brand[] = [
-  {
-    name: "Bugatti",
-    logo: "/logos/bugatti.png",
-    models: ["Chiron", "Veyron", "Divo"],
-  },
-  {
-    name: "Ferrari",
-    logo: "/logos/ferrari.png",
-    models: ["458", "488", "F8", "SF90"],
-  },
-  {
-    name: "Ascari",
-    logo: "/logos/logocut.png",
-    models: ["3000", "A10"],
-  },
-  {
-    name: "Audi",
-    logo: "/logos/audi.png",
-    models: ["TT", "R8", "A3", "A4"],
-  },
-  {
-  name: "BMW",
-  logo: "/logos/bmw.png",
-  models: ["serie1", "serie3", "serie5"], // o quello che vuoi
-  },
-  {
-  name: "FIAT",
-  logo: "/logos/fiat.png",
-  models: ["serie1", "serie3", "serie5"], // o quello che vuoi
-  },
-  {
-  name: "PORSCHE",
-  logo: "/logos/porsche.png",
-  models: ["serie1", "serie3", "serie5"], // o quello che vuoi
-},
-{
-  name: "FORD",
-  logo: "/logos/ford.png",
-  models: ["serie1", "serie3", "serie5"], // o quello che vuoi
-},
-{
-  name: "TOYOTA",
-  logo: "/logos/toyota.png",
-  models: ["serie1", "serie3", "serie5"], // o quello che vuoi
-},
 
 
 
-
-
-];
+const brands = CAR_BRANDS.map((b) => ({
+  name: b.label,
+  logo: b.icon,
+  models: CAR_MODELS_BY_BRAND_KEY[b.key] ?? [],
+  key: b.key,
+}));
 
 export default function SearchBar({ onSearch }: { onSearch: (filters: any) => void }) {
   const [isOpen, setIsOpen] = useState(false);

@@ -391,3 +391,104 @@ resoconto giornata
 1. inserito il campo tendina per le marche e carburante, mettendo anche i loghi di riferimento
 
 ---------------------------------------------------------------
+update 27/12/2025
+1. inserire pagina mappa interattiva 
+
+resconto giornata
+1. installato nuove dipendeze npm i mapbox-gl react-map-gl @mapbox/mapbox-gl-geocoder lodash.debounce
+c'è un problema sul recupero del token di mapbox e su delle dipendenze da scaricare npm i react-map-gl@^7 mapbox-gl
+dava dei problemi react-map-gl perché installato in un'altro ambiente risolto.
+react-map-gl installato correttamente
+Parametri backend allineati (lat / lon / radius)
+Prisma import corretto
+
+
+creato un helper per decodificare address e city in lat e longitudine
+
+nella mappa adesso appaiono i puntini delle macchine
+
+------------------------
+sal 29/12/2025
+1. capire perché cambio utente e nuova auto esempio via dante alighieri vanzago va in errore
+2. nascondere posizione sulla preview della card 
+3. sistemare filtri della mappa
+4. aggiungere nella chat allega documenti e pop up finale con periziatore
+5. tendina auto periziata con vari cherck esempio check cinghia...
+
+----------------------------------------------
+update 05/01/2026
+sistamare punti del sal 29/12
+1. sistemato update dell'indirizzo nel geocode.ts passavo un nome sbagliato del env mapbox e poi perché non ho messo il token di mapbox sul backend
+2. nascosto posizione della card
+
+
+update 08/01/2026
+obiettivi giornata perizia
+
+1. sto aggiornando lo schema del db, installando dipendenze nuove come npm i multer npm i -D @types/multer
+ modificato alcuni file:
+ - aggiunto rotte nel cars.ts per download e upload perizia 
+ - logica nel frontend in cardetail per far vedere la tendina della perizia con auto da periziare e periziata
+ - aggiornato lo schema del db per permettere il cambio di stato da non periziata a periziata
+ - aggiunto in mio garage, la sezione carica perizia, qui il venditore dopo che il periziatore avrà fatto la perizia rilascerà un documento che 
+    verrà caricato sopra
+- utente interssato vede se auto è stata periziata oppure si se è loggato potrà scaricare doc auto dell'auto periziata( in futuro pagamento)
+---------------------------------------------------------------
+
+sal 09/01/2026
+1. aggiungere mappa anche da non loggato stesse funzionalità
+2. sistemare i filtri della mappa
+3. dare una grandezza standard alle card del garage(ora sono troppo grandi)
+
+---------------------------------------------------------------------
+
+update 20/01/2026
+1. aggiunto mappa anche da non loggato
+2. sistemato i filtri della mappa 
+3. dato grandezza standard alle card del garage.
+
+in più
+1. aggiornato i campi della card dettaglio pechè in fase di creazione non venivano aggiunti i campi ma solo in update e ho aggiunto il campo kilometri che
+    veniva dimenticato e tolto la voce prezzo.
+
+update da fare 
+1. guardare perché non va invia offerta 
+
+------------------------------------------------------------
+update 22/01/2026
+1. offerta funziona devo risolvere il fatto, che se un utente è nuovo deve prima creare un auto e poi sblocca le altre funzionalità
+    risolto ora puoi mandare offerte anche senza auto
+2. aggioranto come si inseriscono i prezzi nella web app
+3. inserito una card migliore nella visualizzazioen sulla mappa 
+
+cose da fare:
+1. pensare livello logico al periziatore come si deve integrare con il resto web app 
+    io pensavo a login con clerk -> poi pagina dentro "sei altro" 1) periziatore 2) concessionario 
+    periziatore -> inviare documenti ( quali ?) una volta inviati i documenti -> visuale diversa dal normale utente 
+    vanno via i tasti mappa, auto, offerte, chat e il mio garage. Ma appaiono invece diverse visuali con perizie ricevute
+    chat e resoconto perizie. 
+    perizie ricevute, dentro a questa visuale vengono visualizzate l'elenco delle perizie che si ricevono dai clienti (coloro che vendono auto)
+    come avviene match( o casuale o prefisso. all'inizio oppurei in base al calendario che il periziatore si mette( pref questa) ovviamente in base alla posizione
+    vicino all'auto di default non vorrei che un periziatore si facesse più di 70km per periziare un'auto( campo che si può modificare)
+    quindi il periziatore in base a luogo (esempio Milano) calendario che si compila lui, rimane disponibile e visibile. In apposita 
+    sezione chiamata "mia officina" con raggio per essere disponibile e il calendario con gli impegni.
+    Chi vende invece avrà una sezione a pop up centrale vicino alla card dell'auto che deve vendere( le sue) vicino a carica perizia, 
+    nella casistica in cui non è periziata il tasto ( che scompare non appena viene caricata la perizia) "contatta perizia".
+    Contatta perizia cosa fa apre appunto un pop up con cui scegli il giorno e l'ora che vuoi periziare, inviata la richiesta ti troverà.
+    il primo periziatore disponibile per la data indicata (sempre ad un max di 70 km da te) in cui si desidera ci sono 3 opzioni:
+    1- trovi il match con la data desiderata -> procedi con il prenotare e arriva la richiesta al periziatore
+    2- trovi un match simile la data è 50% corretta, il giorno è giusto ma cambia l'ora oppure viceversa, il giorno può variare di uno o due giorni orario sempre dalle 9:00 alle 18:00
+        se accetti l'alternativa -> procedi con il prenotare incontro con periziatore
+    3- non trovi nulla -> messaggio " i nostri periziatori sono in giro, prova un'altro giorno" riprogrammi un giorno.
+    Una volta arrivata la richiesta al periziatore, il periziatore nella sezione "perizie ricevute" li vede il dettaglio dell'auto, il venditore e la posizione.
+    Il periziatore non rifiuta di norma le offerte, perchè c'è già stato un match, da la conferma di lettura tramite pulsante e l'utente riceve nella sezione "chat"
+    riceve un primo messaggio automatico dal periziatore con lui che accetta, nome, officina associata, la data e recapito telefonico.
+    Giorno della perizia, auto periziata una volta periziata il periziatore in chat invia la perizia al venditore, che poi si occuperà lui di caricarla
+
+    cose che sono da aggiungere
+    - visuale personalizzata per periziatore
+        perizie ricevute
+        chat con invio documenti
+        mia officina ( distanza e calendario)
+        resoconto perizie( con perizie dentro)
+    - tasto dentro il mio garage carica perizie

@@ -2,6 +2,7 @@
 import { Router } from "express";
 import { prisma } from "../prisma";
 import { getAuth } from "@clerk/express";
+import { ensureUserInDb } from "../lib/authUser";
 
 const router = Router();
 
@@ -23,15 +24,8 @@ router.post("/", async (req, res) => {
       return res.status(400).json({ error: "Dati mancanti" });
     }
 
-    // 🔍 Buyer
-    const buyer = await prisma.user.findUnique({
-      where: { clerkId: clerkUserId },
-    });
-
-    // ⚠️ utente autenticato ma non ancora nel DB
-    if (!buyer) {
-      return res.status(400).json({ error: "Utente non inizializzato" });
-    }
+    // ✅ buyer: se non esiste nel DB lo creo al volo
+    const buyer = await ensureUserInDb(clerkUserId);
 
     // 🔍 Auto + owner
     const car = await prisma.car.findUnique({
@@ -51,15 +45,30 @@ router.post("/", async (req, res) => {
     }
 
     // ❌ valida prezzo
-    const acceptedAmounts = [
-      car.offerPrice1,
-      car.offerPrice2,
-      car.offerPrice3,
-    ].filter((v): v is number => typeof v === "number");
+    const acceptedAmounts = [car.offerPrice1, car.offerPrice2, car.offerPrice3]
+      .filter((v): v is number => typeof v === "number");
 
     if (!acceptedAmounts.includes(Number(amount))) {
       return res.status(400).json({
-        error: "Prezzo non valido. Devi scegliere una delle 3 offerte disponibili.",
+        error:
+          "Prezzo non valido. Devi scegliere una delle 3 offerte disponibili.",
+      });
+    }
+
+    // (opzionale) evita doppie offerte pending identiche per la stessa auto
+    // Se non lo vuoi, rimuovi questo blocco.
+    const existing = await prisma.offer.findFirst({
+      where: {
+        carId: car.id,
+        buyerId: buyer.id,
+        status: "PENDING",
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    if (existing) {
+      return res.status(400).json({
+        error: "Hai già un'offerta in sospeso per questa auto.",
       });
     }
 
@@ -75,37 +84,60 @@ router.post("/", async (req, res) => {
     });
 
     return res.status(201).json({ ok: true, offer });
-
   } catch (err) {
     console.error("❌ Errore POST /offers", err);
     return res.status(500).json({ error: "Errore creazione offerta" });
   }
 });
 
-
-
 /**
  * POST /api/offers/:id/accept
+ * Accetta un'offerta (solo seller)
+ * - crea chat se non esiste
+ * - aggiorna status = ACCEPTED
  */
 router.post("/:id/accept", async (req, res) => {
   try {
     const offerId = Number(req.params.id);
+    const { userId: clerkUserId } = getAuth(req);
 
-    
+    if (!clerkUserId) {
+      return res.status(401).json({ error: "Non autenticato" });
+    }
+
+    const me = await ensureUserInDb(clerkUserId);
+
     // 1️⃣ Trovo l’offerta
     const offer = await prisma.offer.findUnique({
       where: { id: offerId },
-      include: { car: true }
+      include: { car: true },
     });
 
     if (!offer) {
       return res.status(404).json({ error: "Offerta non trovata" });
     }
-    
+
+    // ✅ solo seller può accettare
+    if (offer.sellerId !== me.id) {
+      return res.status(403).json({ error: "Non autorizzato" });
+    }
+
+    // (opzionale) se già accepted, ritorna chat esistente (idempotenza)
+    if (offer.status === "ACCEPTED") {
+      const existingChat = await prisma.chat.findUnique({
+        where: { offerId: offer.id },
+      });
+
+      return res.json({
+        ok: true,
+        offer,
+        chatId: existingChat?.id ?? null,
+      });
+    }
 
     // 2️⃣ Se non esiste già una chat, la creo
     let chat = await prisma.chat.findUnique({
-      where: { offerId: offer.id }
+      where: { offerId: offer.id },
     });
 
     if (!chat) {
@@ -114,33 +146,45 @@ router.post("/:id/accept", async (req, res) => {
           offerId: offer.id,
           carId: offer.carId,
           buyerId: offer.buyerId,
-          sellerId: offer.sellerId
-        }
+          sellerId: offer.sellerId,
+        },
       });
     }
 
     // 3️⃣ Aggiorno lo stato dell’offerta
     const updatedOffer = await prisma.offer.update({
       where: { id: offer.id },
-      data: { status: "ACCEPTED" }
+      data: { status: "ACCEPTED" },
     });
 
     return res.json({
       ok: true,
       offer: updatedOffer,
-      chatId: chat.id   // 👈 fondamentale per il frontend
+      chatId: chat.id, // 👈 fondamentale per il frontend
     });
-
   } catch (err) {
     console.error("Errore accept:", err);
     return res.status(500).json({ error: "Errore accettazione offerta" });
   }
 });
 
+/**
+ * DELETE /api/offers/:id
+ * Elimina un'offerta (solo buyer o seller)
+ * - se ACCEPTED e non forzato -> blocco
+ * - elimina chat e poi offerta
+ */
 router.delete("/:id", async (req, res) => {
   try {
     const offerId = Number(req.params.id);
     const force = req.query.force === "true";
+    const { userId: clerkUserId } = getAuth(req);
+
+    if (!clerkUserId) {
+      return res.status(401).json({ error: "Non autenticato" });
+    }
+
+    const me = await ensureUserInDb(clerkUserId);
 
     const offer = await prisma.offer.findUnique({
       where: { id: offerId },
@@ -148,6 +192,11 @@ router.delete("/:id", async (req, res) => {
 
     if (!offer) {
       return res.status(404).json({ error: "Offerta non trovata" });
+    }
+
+    // ✅ solo buyer o seller possono eliminare
+    if (offer.buyerId !== me.id && offer.sellerId !== me.id) {
+      return res.status(403).json({ error: "Non autorizzato" });
     }
 
     // 🔒 se ACCEPTED e non forzato → blocco
@@ -168,16 +217,16 @@ router.delete("/:id", async (req, res) => {
     });
 
     return res.json({ ok: true });
-
   } catch (err) {
     console.error("Errore delete offer:", err);
     return res.status(500).json({ error: "Errore eliminazione offerta" });
   }
 });
 
-
-
-// POST /api/offers/:id/decline
+/**
+ * POST /api/offers/:id/decline
+ * Rifiuta un'offerta (solo seller)
+ */
 router.post("/:id/decline", async (req, res) => {
   const { userId: clerkUserId } = getAuth(req);
   const offerId = Number(req.params.id);
@@ -185,13 +234,15 @@ router.post("/:id/decline", async (req, res) => {
   if (!clerkUserId) return res.status(401).json({ error: "Non autenticato" });
 
   try {
-    const owner = await prisma.user.findUnique({
-      where: { clerkId: clerkUserId },
-    });
+    const me = await ensureUserInDb(clerkUserId);
 
     const offer = await prisma.offer.findUnique({ where: { id: offerId } });
 
-    if (!offer || offer.sellerId !== owner?.id) {
+    if (!offer) {
+      return res.status(404).json({ error: "Offerta non trovata" });
+    }
+
+    if (offer.sellerId !== me.id) {
       return res.status(403).json({ error: "Non autorizzato" });
     }
 
@@ -202,6 +253,7 @@ router.post("/:id/decline", async (req, res) => {
 
     return res.json(updated);
   } catch (err) {
+    console.error("Errore decline:", err);
     return res.status(500).json({ error: "Errore rifiuto offerta" });
   }
 });
@@ -212,19 +264,14 @@ router.post("/:id/decline", async (req, res) => {
  */
 router.get("/received", async (req, res) => {
   try {
-    const { userId } = getAuth(req);
+    const { userId: clerkUserId } = getAuth(req);
 
-    if (!userId) {
+    if (!clerkUserId) {
       return res.status(401).json({ error: "Not authenticated" });
     }
 
-    const user = await prisma.user.findUnique({
-      where: { clerkId: userId },
-    });
-
-    if (!user) {
-      return res.status(404).json({ error: "User not found" });
-    }
+    // ✅ garantisco esistenza user (così non esplode su utenti nuovi)
+    const user = await ensureUserInDb(clerkUserId);
 
     const offers = await prisma.offer.findMany({
       where: { sellerId: user.id },
@@ -233,26 +280,41 @@ router.get("/received", async (req, res) => {
         car: true,
         chat: true,
       },
-      orderBy: { createdAt: "desc" }
+      orderBy: { createdAt: "desc" },
     });
 
-    return res.json(offers);   // 👈 UNICO INVIO, CORRETTO
-
+    return res.json(offers);
   } catch (err) {
     console.error("GET /offers/received ERROR", err);
-
-    if (!res.headersSent) {
-      return res.status(500).json({ error: "Errore caricamento offerte" });
-    }
+    return res.status(500).json({ error: "Errore caricamento offerte" });
   }
 });
 
 /**
  * POST /api/offers/:id/reject
+ * (prima era aperta) -> ora protetta, solo seller può fare reject
+ * Nota: tu hai sia DECLINED che REJECTED, li tengo entrambi.
  */
 router.post("/:id/reject", async (req, res) => {
   try {
     const offerId = Number(req.params.id);
+    const { userId: clerkUserId } = getAuth(req);
+
+    if (!clerkUserId) {
+      return res.status(401).json({ error: "Non autenticato" });
+    }
+
+    const me = await ensureUserInDb(clerkUserId);
+
+    const offer = await prisma.offer.findUnique({ where: { id: offerId } });
+
+    if (!offer) {
+      return res.status(404).json({ error: "Offerta non trovata" });
+    }
+
+    if (offer.sellerId !== me.id) {
+      return res.status(403).json({ error: "Non autorizzato" });
+    }
 
     const updated = await prisma.offer.update({
       where: { id: offerId },
@@ -265,8 +327,5 @@ router.post("/:id/reject", async (req, res) => {
     return res.status(500).json({ error: "Errore rifiuto" });
   }
 });
-
-
-
 
 export default router;

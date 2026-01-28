@@ -50,7 +50,7 @@ export default function ChatList() {
             {/* STATO */}
             <div className="chat-meta">
               {!lastMsg?.readAt && (
-                <span className="dot" />
+                <span className="chat-status-dot" />
               )}
             </div>
           </Link>

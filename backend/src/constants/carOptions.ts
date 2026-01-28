@@ -17,3 +17,16 @@ export const FUEL_TYPES = [
   { key: 'gpl', label: 'Metano / GPL', icon: '/fuel/gpl.jpeg' },
   { key: 'idrogeno', label: 'Idrogeno', icon: '/fuel/idro.jpeg' },
 ];
+
+// ✅ MODELLI per marca (chiave = key della marca)
+export const CAR_MODELS_BY_BRAND_KEY: Record<string, string[]> = {
+  bugatti: ['Chiron', 'Veyron', 'Divo'],
+  ferrari: ['458', '488', 'F8', 'SF90'],
+  ascari: ['3000', 'A10'],
+  audi: ['TT', 'R8', 'A3', 'A4'],
+  bmw: ['Serie 1', 'Serie 3', 'Serie 5'],
+  fiat: ['Panda', '500', 'Punto'],
+  porsche: ['911', 'Cayenne', 'Taycan'],
+  ford: ['Fiesta', 'Focus', 'Mustang'],
+  toyota: ['Yaris', 'Corolla', 'Supra'],
+};

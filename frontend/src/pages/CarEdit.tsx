@@ -33,6 +33,9 @@ type Car = {
   priceEur?: number | null;
   engine?: string | null;
   trimLevel?: string | null;
+  locationText?: string | null;
+  city?:string | null;
+
 };
 
 export default function CarEdit() {
@@ -55,9 +58,12 @@ export default function CarEdit() {
   const [coverUrl, setCoverUrl] = useState<string>('');
   const [photos, setPhotos] = useState<string[]>([]);
   // ⭐ Prezzi accettati (obbligatori)
-  const [offerPrice1, setOfferPrice1] = useState<number>(0);
-  const [offerPrice2, setOfferPrice2] = useState<number>(0);
-  const [offerPrice3, setOfferPrice3] = useState<number>(0);
+const [offerPrice1, setOfferPrice1] = useState<number | ''>('');
+const [offerPrice2, setOfferPrice2] = useState<number | ''>('');
+const [offerPrice3, setOfferPrice3] = useState<number | ''>('');
+  const [locationText, setLocationText] = useState('');
+  const [city, setCity] = useState('');
+
 
 
   const [color, setColor] = useState('');
@@ -91,6 +97,9 @@ export default function CarEdit() {
         setHorsepower((data.horsepower ?? '') as any);
         setMileageKm((data.mileageKm ?? '') as any);
         setDescription(data.description || '');
+        setLocationText(data.locationText || '');
+        setCity(data.city || '');
+
         // ⭐ FIX COVER: se non c'è cover, prendo la prima foto
         setCoverUrl(data.coverUrl || (data.photos?.[0] ?? ''));
         setPhotos(Array.isArray(data.photos) ? data.photos : []);
@@ -106,9 +115,10 @@ export default function CarEdit() {
         setEngine(data.engine || '');
         setTrimLevel(data.trimLevel || '');
         // ⭐ PREZZI ACCETTATI
-        setOfferPrice1(data.offerPrice1 ?? 0);
-        setOfferPrice2(data.offerPrice2 ?? 0);
-        setOfferPrice3(data.offerPrice3 ?? 0);
+        setOfferPrice1(data.offerPrice1 ? data.offerPrice1 : '');
+        setOfferPrice2(data.offerPrice2 ? data.offerPrice2 : '');
+        setOfferPrice3(data.offerPrice3 ? data.offerPrice3 : '');
+
 
       } catch (e: any) {
         setErr(
@@ -194,9 +204,12 @@ export default function CarEdit() {
       trimLevel: trimLevel === '' ? null : trimLevel,
       color: color === '' ? null : color,
       // ⭐ NUOVI 3 PREZZI OBBLIGATORI
-      offerPrice1: Number(offerPrice1),
-      offerPrice2: Number(offerPrice2),
-      offerPrice3: Number(offerPrice3),
+      offerPrice1: offerPrice1 === '' ? null : offerPrice1,
+      offerPrice2: offerPrice2 === '' ? null : offerPrice2,
+      offerPrice3: offerPrice3 === '' ? null : offerPrice3,
+      locationText: locationText === '' ? null : locationText,
+      city: city === '' ? null : city,
+
     };
 
     try {
@@ -291,6 +304,20 @@ export default function CarEdit() {
                   setYear(parseInt(e.target.value || '0'))
                 }
               />
+              <input
+                className="input"
+                placeholder="Indirizzo (es. Via Roma 10)"
+                value={locationText}
+                onChange={(e) => setLocationText(e.target.value)}
+              />
+
+              <input
+                className="input"
+                placeholder="Città"
+                value={city}
+                onChange={(e) => setCity(e.target.value)}
+              />
+
               <div style={{ width: '100%', marginTop: 10 }}>
                 <label className="muted">Carburante</label>
                   <SelectableDropdown
@@ -411,29 +438,33 @@ export default function CarEdit() {
           <input
             className="input"
             type="number"
-            placeholder="Prezzo 1"
+            placeholder="Inserisci prezzo"
             value={offerPrice1}
-            onChange={(e) => setOfferPrice1(Number(e.target.value))}
-            required
+            onChange={(e) =>
+              setOfferPrice1(e.target.value === '' ? '' : Number(e.target.value))
+            }
           />
 
           <input
             className="input"
             type="number"
-            placeholder="Prezzo 2"
+            placeholder="Inserisci prezzo"
             value={offerPrice2}
-            onChange={(e) => setOfferPrice2(Number(e.target.value))}
-            required
+            onChange={(e) =>
+              setOfferPrice2(e.target.value === '' ? '' : Number(e.target.value))
+            }
           />
 
           <input
             className="input"
             type="number"
-            placeholder="Prezzo 3"
+            placeholder="Inserisci prezzo"
             value={offerPrice3}
-            onChange={(e) => setOfferPrice3(Number(e.target.value))}
-            required
+            onChange={(e) =>
+              setOfferPrice3(e.target.value === '' ? '' : Number(e.target.value))
+            }
           />
+
         </div>
         </section>
 
