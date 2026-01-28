@@ -16,24 +16,19 @@ services:
       - ascari_net
 
   backend:
-    build:
-      context: ./backend
+    build: ./backend
+    env_file:
+      - ./backend/.env
     depends_on:
       db:
         condition: service_healthy
-    # usa backend/.env (quello tuo)
-    env_file:
-      - ./backend/.env
     expose:
       - "4002"
     networks:
       - ascari_net
 
   frontend:
-    build:
-      context: ./frontend
-    # usa frontend/.env.production o frontend/.env (quello tuo)
-    # NB: vale in build-time per Vite, quindi deve essere nel repo al build
+    build: ./frontend
     expose:
       - "80"
     depends_on:
@@ -45,11 +40,8 @@ services:
     image: caddy:2-alpine
     ports:
       - "80:80"
-      - "443:443"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data
-      - caddy_config:/config
     depends_on:
       - frontend
       - backend
@@ -58,8 +50,6 @@ services:
 
 volumes:
   pgdata:
-  caddy_data:
-  caddy_config:
 
 networks:
   ascari_net:

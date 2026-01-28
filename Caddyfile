@@ -1,7 +1,4 @@
-ascari.example.com {
+:80 {
+  reverse_proxy /api/* backend:4002
   reverse_proxy frontend:80
-}
-
-api.ascari.example.com {
-  reverse_proxy backend:4002
 }
