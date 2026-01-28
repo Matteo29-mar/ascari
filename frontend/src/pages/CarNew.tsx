@@ -37,9 +37,12 @@ export default function CarNew() {
   const [description, setDescription] = useState('');
   const [coverUrl, setCoverUrl] = useState<string>('');
   const [photos, setPhotos] = useState<string[]>([]);
-  const [offerPrice1, setOfferPrice1] = useState<number>(0);
-  const [offerPrice2, setOfferPrice2] = useState<number>(0);
-  const [offerPrice3, setOfferPrice3] = useState<number>(0);
+  const [offerPrice1, setOfferPrice1] = useState<number | ''>('');
+  const [offerPrice2, setOfferPrice2] = useState<number | ''>('');
+  const [offerPrice3, setOfferPrice3] = useState<number | ''>('');
+  const [locationText, setLocationText] = useState('');
+  const [city, setCity] = useState('');
+
 
 
   // Campi extra
@@ -75,6 +78,7 @@ export default function CarNew() {
     setDescription(d.description || '');
     setCoverUrl(d.coverUrl || '');
     setPhotos(Array.isArray(d.photos) ? d.photos : []);
+
 
     setColor(d.color || '');
     setTorqueNm((d.torqueNm ?? '') as any);
@@ -143,6 +147,8 @@ export default function CarNew() {
       description: description || undefined,
       coverUrl: coverUrl || photos[0] || undefined, // ⭐ FIX
       photos, // ⭐ sempre array corretto
+      locationText: locationText || undefined,
+      city: city || undefined,
       color: color || undefined,
       torqueNm: torqueNm === '' ? undefined : Number(torqueNm),
       drivetrain: drivetrain || undefined,
@@ -152,9 +158,10 @@ export default function CarNew() {
       priceEur: priceEur === '' ? undefined : Number(priceEur),
       engine: engine || undefined,
       trimLevel: trimLevel || undefined,
-      offerPrice1,
-      offerPrice2,
-      offerPrice3,
+      offerPrice1: offerPrice1 === '' ? undefined : offerPrice1,
+      offerPrice2: offerPrice2 === '' ? undefined : offerPrice2,
+      offerPrice3: offerPrice3 === '' ? undefined : offerPrice3,
+
 
     };
 
@@ -251,6 +258,20 @@ export default function CarNew() {
                   setYear(parseInt(e.target.value || '0'))
                 }
               />
+              <input
+                className="input"
+                placeholder="Indirizzo (es. Via Roma 10)"
+                value={locationText}
+                onChange={(e) => setLocationText(e.target.value)}
+              />
+
+              <input
+                className="input"
+                placeholder="Città"
+                value={city}
+                onChange={(e) => setCity(e.target.value)}
+              />
+
               <div style={{ width: '100%', marginTop: 10 }}>
                 <label className="muted">Carburante</label>
                   <SelectableDropdown
@@ -371,29 +392,39 @@ export default function CarNew() {
           <input
             className="input"
             type="number"
-            placeholder="Prezzo 1"
+            placeholder="Inserisci prezzo"
             value={offerPrice1}
-            onChange={(e) => setOfferPrice1(Number(e.target.value))}
-            required
+            onChange={(e) =>
+              setOfferPrice1(
+                e.target.value === '' ? '' : Number(e.target.value)
+              )
+            }
           />
 
           <input
             className="input"
             type="number"
-            placeholder="Prezzo 2"
+            placeholder="Inserisci prezzo"
             value={offerPrice2}
-            onChange={(e) => setOfferPrice2(Number(e.target.value))}
-            required
+            onChange={(e) =>
+              setOfferPrice2(
+                e.target.value === '' ? '' : Number(e.target.value)
+              )
+            }
           />
 
           <input
             className="input"
             type="number"
-            placeholder="Prezzo 3"
+            placeholder="Inserisci prezzo"
             value={offerPrice3}
-            onChange={(e) => setOfferPrice3(Number(e.target.value))}
-            required
+            onChange={(e) =>
+              setOfferPrice3(
+                e.target.value === '' ? '' : Number(e.target.value)
+              )
+            }
           />
+
         </div>
         </section>
 

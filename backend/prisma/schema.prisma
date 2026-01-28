@@ -51,8 +51,18 @@ model Car {
   photos       String[]
   coverUrl     String?
 
+  // ✅ PERIZIA (NUOVO)
+  isPeriziata       Boolean   @default(false)
+  periziaDocUrl     String?
+  periziaUploadedAt DateTime?
+
   // RELAZIONE con Offer
   offers Offer[] @relation("CarOffers")
+
+  // ✅ NUOVI CAMPI INDIRIZZO
+  locationText String?   // es: "Via Rossi 45, Milano" (input utente)
+  city         String?
+  country      String?
 
   latitude  Float?
   longitude Float?

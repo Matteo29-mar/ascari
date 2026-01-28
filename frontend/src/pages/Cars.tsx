@@ -388,7 +388,7 @@ export default function Cars() {
                   {/* per id ma oscurato nel frontend */}
                   {/* <div className="kv">
                     <span className="muted">ID</span> <b>#{car.id}</b>
-                  </div> */}
+                  </div> 
                   <div className="kv">
                     <span className="muted">Posizione</span>
                     <b>
@@ -400,7 +400,7 @@ export default function Cars() {
                   <div className="kv">
                     <span className="muted">Distanza</span>
                     <b>{car.distanceKm != null ? `${car.distanceKm} km` : '—'}</b>
-                  </div>
+                  </div>*/}
                 </div>
 
                 <div className="footer-actions">

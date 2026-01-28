@@ -2,8 +2,119 @@ import express from 'express';
 import { getAuth } from '@clerk/express';
 import { prisma } from '../prisma';
 import { ensureUserInDb } from '../lib/authUser';
+import { geocodeAddress } from "../lib/geocode";
+import multer from "multer";
+import path from "path";
+import fs from "fs";
+
 
 const router = express.Router();
+
+const uploadDir = path.join(process.cwd(), "uploads", "perizie");
+fs.mkdirSync(uploadDir, { recursive: true });
+
+const storage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, uploadDir),
+  filename: (req, file, cb) => {
+    const carId = req.params.id;
+    const safe = file.originalname.replace(/[^a-zA-Z0-9.\-_]/g, "_");
+    cb(null, `car_${carId}_${Date.now()}_${safe}`);
+  },
+});
+
+const upload = multer({
+  storage,
+  fileFilter: (_req, file, cb) => {
+    // accetta solo pdf (puoi allargare dopo)
+    if (file.mimetype !== "application/pdf") {
+      return cb(new Error("Solo PDF consentiti"));
+    }
+    cb(null, true);
+  },
+  limits: { fileSize: 15 * 1024 * 1024 }, // 15MB
+});
+
+/**
+ * POST /api/cars/:id/perizia/upload
+ * 🔒 Solo owner: carica PDF perizia e setta isPeriziata=true
+ */
+router.post("/:id/perizia/upload", upload.single("file"), async (req, res) => {
+  const { userId: clerkUserId } = getAuth(req);
+  const carId = Number(req.params.id);
+
+  if (!clerkUserId) {
+    return res.status(401).json({ error: "Not authenticated" });
+  }
+  if (Number.isNaN(carId)) {
+    return res.status(400).json({ error: "Invalid car id" });
+  }
+  if (!req.file) {
+    return res.status(400).json({ error: "Missing file" });
+  }
+
+  try {
+    const user = await prisma.user.findUnique({ where: { clerkId: clerkUserId } });
+    if (!user) return res.status(404).json({ error: "User not found" });
+
+    const car = await prisma.car.findUnique({ where: { id: carId } });
+    if (!car) return res.status(404).json({ error: "Car not found" });
+
+    if (car.ownerId !== user.id) {
+      return res.status(403).json({ error: "Not allowed" });
+    }
+
+    // URL pubblico del file (servito da express static /uploads)
+    const docUrl = `/uploads/perizie/${req.file.filename}`;
+
+    const updated = await prisma.car.update({
+      where: { id: carId },
+      data: {
+        isPeriziata: true,
+        periziaDocUrl: docUrl,
+        periziaUploadedAt: new Date(),
+      },
+    });
+
+    return res.json({ success: true, car: updated });
+  } catch (e: any) {
+    console.error("POST /api/cars/:id/perizia/upload error:", e);
+    return res.status(500).json({ error: e?.message || "Upload error" });
+  }
+});
+
+/**
+ * GET /api/cars/:id/perizia/download
+ * 🔒 Autenticato: scarica PDF perizia se disponibile
+ */
+router.get("/:id/perizia/download", async (req, res) => {
+  const { userId: clerkUserId } = getAuth(req);
+  const carId = Number(req.params.id);
+
+  if (!clerkUserId) {
+    return res.status(401).json({ error: "Not authenticated" });
+  }
+  if (Number.isNaN(carId)) {
+    return res.status(400).json({ error: "Invalid car id" });
+  }
+
+  try {
+    const car = await prisma.car.findUnique({
+      where: { id: carId },
+      select: { isPeriziata: true, periziaDocUrl: true },
+    });
+
+    if (!car) return res.status(404).json({ error: "Car not found" });
+
+    if (!car.isPeriziata || !car.periziaDocUrl) {
+      return res.status(403).json({ error: "Perizia not available" });
+    }
+
+    return res.redirect(car.periziaDocUrl);
+  } catch (e) {
+    console.error("GET /api/cars/:id/perizia/download error:", e);
+    return res.status(500).json({ error: "Download error" });
+  }
+});
 
 
 /**
@@ -18,11 +129,9 @@ router.post('/', async (req, res) => {
   }
 
   try {
-    // prendo email e nome dai claim della sessione Clerk
     const email = sessionClaims?.email as string | undefined;
     const name = (sessionClaims as any)?.fullName || undefined;
 
-    // ⬇️ ora ensureUserInDb RITORNA SEMPRE un User valido
     const user = await ensureUserInDb(clerkUserId, email ?? null, name ?? null);
 
     const {
@@ -39,16 +148,65 @@ router.post('/', async (req, res) => {
       description,
       coverUrl,
       photos,
+      locationText,
+      city,
+
+      // ✅ campi extra
+      color,
+      torqueNm,
+      drivetrain,
+      transmission,
+      seats,
+      doors,
+      priceEur,
+      engine,
+      trimLevel,
     } = req.body;
 
-    if (!offerPrice1 || !offerPrice2 || !offerPrice3) {
+
+    if (
+      offerPrice1 === undefined ||
+      offerPrice2 === undefined ||
+      offerPrice3 === undefined
+    ) {
       return res.status(400).json({ error: "I tre prezzi sono obbligatori" });
     }
-    // 🔑 fallback sicuro per il titolo
+
+    const normalize = (v: any) => (v === '' ? null : v);
+
+
     const finalTitle =
       typeof title === 'string' && title.trim().length > 0
         ? title.trim()
         : [make, model, year].filter(Boolean).join(' ') || 'Nuova auto';
+
+    // ✅ cover fallback (come nel PUT)
+    const finalCover =
+      typeof coverUrl === 'string' && coverUrl.trim() !== ''
+        ? coverUrl
+        : Array.isArray(photos) && photos.length > 0
+        ? photos[0]
+        : null;
+
+    // ✅ GEOCODING in CREATE (fondamentale per farla apparire in mappa)
+    let latitude: number | null = null;
+    let longitude: number | null = null;
+
+    const loc = normalize(locationText);
+    const c = normalize(city);
+
+    if (loc || c) {
+      const geo = await geocodeAddress(loc ?? "", c ?? undefined);
+
+      if (!geo) {
+        return res.status(400).json({
+          error: "Indirizzo/Città non trovati. Controlla e riprova.",
+        });
+      }
+
+      latitude = geo.lat;
+      longitude = geo.lng;
+    }
 
     const car = await prisma.car.create({
       data: {
@@ -56,16 +214,35 @@ router.post('/', async (req, res) => {
         model,
         title: finalTitle,
         year,
+
         offerPrice1: Number(offerPrice1),
         offerPrice2: Number(offerPrice2),
         offerPrice3: Number(offerPrice3),
-        fuelType,
-        horsepower,
-        mileageKm,
-        description,
-        coverUrl,
-        photos, // String[] come da schema
-        ownerId: user.id, // ✅ sempre definito
+
+        fuelType: normalize(fuelType),
+        horsepower: horsepower === '' || horsepower === undefined ? null : Number(horsepower),
+        mileageKm: mileageKm === '' || mileageKm === undefined ? null : Number(mileageKm),
+        description: normalize(description),
+
+        coverUrl: finalCover,
+        photos: Array.isArray(photos) ? photos : [],
+        ownerId: user.id,
+
+        locationText: normalize(locationText),
+        city: normalize(city),
+        latitude,
+        longitude,
+
+        // ✅ extra
+        engine: normalize(engine),
+        trimLevel: normalize(trimLevel),
+        color: normalize(color),
+        drivetrain: normalize(drivetrain),
+        transmission: normalize(transmission),
+        torqueNm: torqueNm === '' || torqueNm === undefined ? null : Number(torqueNm),
+        seats: seats === '' || seats === undefined ? null : Number(seats),
+        doors: doors === '' || doors === undefined ? null : Number(doors),
+        priceEur: priceEur === '' || priceEur === undefined ? null : Number(priceEur),
       },
     });
 
@@ -75,6 +252,7 @@ router.post('/', async (req, res) => {
     return res.status(500).json({ error: 'Error creating car' });
   }
 });
+
 
 /**
  * GET /api/cars/search
@@ -153,38 +331,44 @@ router.get("/filter", async (req, res) => {
  * 📍 Mostra le auto nel raggio indicato
  * es: /api/cars/nearby?lat=45.32&lon=8.42&radius=5
  */
-router.get('/nearby', async (req, res) => {
-  const lat = parseFloat(String(req.query.lat));
-  const lon = parseFloat(String(req.query.lon));
-  const radiusKm = parseFloat(String(req.query.radius || '5'));
+router.get("/nearby", async (req, res) => {
+  const lat = Number(req.query.lat);
+  const lon = Number(req.query.lon);
+  const radius = Number(req.query.radius ?? 5);
 
-  if (isNaN(lat) || isNaN(lon)) {
-    return res.status(400).json({ error: 'Invalid coordinates' });
+  if (Number.isNaN(lat) || Number.isNaN(lon)) {
+    return res.status(400).json({ error: "Invalid coordinates" });
   }
 
   try {
-    const cars = await prisma.$queryRawUnsafe(`
-      SELECT *, 
-        (
-          6371 * acos(
-            cos(radians(${lat})) * 
-            cos(radians(latitude)) *
-            cos(radians(longitude) - radians(${lon})) +
-            sin(radians(${lat})) * sin(radians(latitude))
-          )
-        ) AS distance
-      FROM "Car"
-      WHERE latitude IS NOT NULL AND longitude IS NOT NULL
-      HAVING distance <= ${radiusKm}
-      ORDER BY distance ASC;
+    const cars = await prisma.$queryRawUnsafe<any[]>(`
+      SELECT *
+      FROM (
+        SELECT
+          *,
+          (
+            6371 * acos(
+              cos(radians(${lat})) *
+              cos(radians(latitude)) *
+              cos(radians(longitude) - radians(${lon})) +
+              sin(radians(${lat})) * sin(radians(latitude))
+            )
+          ) AS "distanceKm"
+        FROM "Car"
+        WHERE latitude IS NOT NULL
+          AND longitude IS NOT NULL
+      ) t
+      WHERE t."distanceKm" <= ${radius}
+      ORDER BY t."distanceKm" ASC
     `);
 
-    return res.json(cars);
-  } catch (err) {
-    console.error('GET /api/cars/nearby error:', err);
-    return res.status(500).json({ error: 'Nearby search error' });
+    res.json(cars);
+  } catch (e) {
+    console.error("GET /cars/nearby error", e);
+    res.status(500).json({ error: "Nearby search error" });
   }
 });
+
 
 
 
@@ -474,6 +658,10 @@ router.put('/:id', async (req, res) => {
       horsepower: normalize(req.body.horsepower),
       mileageKm: normalize(req.body.mileageKm),
       description: normalize(req.body.description),
+      locationText: normalize(req.body.locationText),
+      city: normalize(req.body.city),
+      latitude: normalize(req.body.latitude),
+      longitude: normalize(req.body.longitude),
 
       engine: normalize(req.body.engine),
       trimLevel: normalize(req.body.trimLevel),
@@ -502,6 +690,19 @@ router.put('/:id', async (req, res) => {
         : Array.isArray(req.body.photos) && req.body.photos.length > 0
         ? req.body.photos[0]
         : car.coverUrl;
+
+      if (data.locationText || data.city) {
+        const geo = await geocodeAddress(
+          data.locationText ?? "",
+          data.city ?? undefined
+        );
+
+        if (geo) {
+          data.latitude = geo.lat;
+          data.longitude = geo.lng;
+        }
+      }
+
 
     // ⭐ Ora aggiorno davvero tutto
     const updated = await prisma.car.update({
