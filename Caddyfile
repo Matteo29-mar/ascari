@@ -1,0 +1,7 @@
+ascari.example.com {
+  reverse_proxy frontend:80
+}
+
+api.ascari.example.com {
+  reverse_proxy backend:4002
+}
