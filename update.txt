@@ -492,3 +492,25 @@ cose da fare:
         mia officina ( distanza e calendario)
         resoconto perizie( con perizie dentro)
     - tasto dentro il mio garage carica perizie
+
+    
+update del 28/01/2026
+oggi siamo andati in test, ci sono stati tanti tira e molla,
+sono stati aggiunti i docker file edgli ambienti (B e F) è stao creato il docker compose per tirare su lo stack con:
+db, F, B e caddy ( per il reverse proxy)
+sono stati cambiati i puntamenti degli env e una roba del caroption che non andava nel backend ma nel frontend
+
+SAREBBE NECESSARIO AVERE LA VERSIONE LOCALE FUNZIONANTE, QUINDI SAREBBE DA FARE UN BRANCH NUOVO LOCAL COPIARE DA MAIN E PORTARE 
+AL COMMIT ADD MAP V2 CON TUTTE LE ROBE LOCALI funzionanti
+
+invece il branch map diventa il test
+
+test tempo
+elimino la macchina tempo:19.42 secondi
+dettaglio auto tempo:4.96 secondi
+far vedere una macchina sulla mappa :4.87 secondi
+carico il mio garage:6:15 secondi
+
+sal 31/01/2026
+documnenti perizia danno errori
+tempo caricamento troppo lungo

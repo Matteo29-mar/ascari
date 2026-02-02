@@ -25,6 +25,7 @@
     "@types/react": "^18.2.74",
     "@types/react-dom": "^18.2.24",
     "@vitejs/plugin-react": "^5.1.0",
+    "baseline-browser-mapping": "^2.9.19",
     "typescript": "^5.4.5",
     "vite": "^5.2.11"
   }

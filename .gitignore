@@ -11,4 +11,3 @@ yarn-error.log*
 # Ignora file temporanei o di build
 dist/
 build/
-.env
