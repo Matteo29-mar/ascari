@@ -1,9 +1,10 @@
 services:
   frontend:
-    build: ./frontend
+    build: .
     container_name: ascari-frontend
     expose:
       - "80"
+    restart: unless-stopped
 
   caddy:
     image: caddy:2-alpine
@@ -17,6 +18,7 @@ services:
       - caddy_config:/config
     depends_on:
       - frontend
+    restart: unless-stopped
 
 volumes:
   caddy_data:
