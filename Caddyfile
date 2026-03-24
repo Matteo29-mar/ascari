@@ -1,4 +1,11 @@
-:80 {
-  reverse_proxy /api/* backend:4002
-  reverse_proxy frontend:80
+myascari.com, www.myascari.com {
+    encode gzip zstd
+
+    handle /api/* {
+        reverse_proxy 172.31.30.157:4002
+    }
+
+    handle {
+        reverse_proxy frontend:80
+    }
 }
