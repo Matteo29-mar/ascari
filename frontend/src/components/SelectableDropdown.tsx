@@ -8,9 +8,10 @@ type Option = {
 
 type Props = {
   label: string;
-  value: string;
+  value: string;          // <-- ora value è la KEY selezionata
   options: Option[];
-  onChange: (value: string) => void;
+  onChange: (value: string) => void; // <-- ritorna la KEY
+  disabled?: boolean;     // <-- (opzionale) utile per Modello
 };
 
 export default function SelectableDropdown({
@@ -18,23 +19,25 @@ export default function SelectableDropdown({
   value,
   options,
   onChange,
+  disabled,
 }: Props) {
   const [open, setOpen] = useState(false);
 
-  const selected = options.find(o => o.label === value);
+  const selected = options.find(o => o.key === value);
 
   return (
-    <div className="card" style={{ padding: 10 }}>
+    <div className="card" style={{ padding: 10, opacity: disabled ? 0.6 : 1 }}>
       {/* HEADER */}
       <button
         type="button"
-        onClick={() => setOpen(!open)}
+        disabled={disabled}
+        onClick={() => !disabled && setOpen(!open)}
         className="row space"
         style={{
           width: '100%',
           background: 'transparent',
           border: 'none',
-          cursor: 'pointer',
+          cursor: disabled ? 'not-allowed' : 'pointer',
         }}
       >
         <div className="row" style={{ gap: 8 }}>
@@ -51,7 +54,7 @@ export default function SelectableDropdown({
       </button>
 
       {/* CONTENUTO */}
-      {open && (
+      {open && !disabled && (
         <div
           className="grid"
           style={{
@@ -61,14 +64,14 @@ export default function SelectableDropdown({
           }}
         >
           {options.map(opt => {
-            const isSelected = value === opt.label;
+            const isSelected = value === opt.key;
 
             return (
               <button
                 key={opt.key}
                 type="button"
                 onClick={() => {
-                  onChange(opt.label);
+                  onChange(opt.key);   // ✅ salva la KEY
                   setOpen(false);
                 }}
                 className="btn secondary"
@@ -76,9 +79,7 @@ export default function SelectableDropdown({
                   display: 'flex',
                   alignItems: 'center',
                   gap: 8,
-                  border: isSelected
-                    ? '2px solid var(--accent)'
-                    : undefined,
+                  border: isSelected ? '2px solid var(--accent)' : undefined,
                 }}
               >
                 {opt.icon && (

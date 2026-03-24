@@ -9,6 +9,10 @@ import carsRouter from './routes/cars';
 import offerRoutes from "./routes/offerts";
 import chatRoutes from "./routes/chat";
 import path from "path";
+import inspectorRoutes from "./routes/inspector";
+import inspectionsRoutes from "./routes/inspections";
+import inspectionReportsRouter from "./routes/inspectionReports";
+
 
 
 const app = express();
@@ -51,10 +55,11 @@ app.use("/api/chat", chatRoutes);
 //uploads
 app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 
+app.use("/api/inspector", inspectorRoutes);
 
+//resoconto
+app.use("/api/inspection-reports", inspectionReportsRouter);
 
-
-export default app;
 
 // 🔧 CORS (se usi la variabile, altrimenti metti direttamente l'URL del frontend)
 const ORIGIN = process.env.CORS_ORIGIN || 'http://localhost:5173'
@@ -195,3 +200,4 @@ app.delete('/cars/:id', async (req, res) => {
   }
 });
 
+export default app;

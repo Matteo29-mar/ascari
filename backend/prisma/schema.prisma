@@ -21,7 +21,116 @@ model User {
   // OFFERTE
   buyerOffers  Offer[]   @relation("BuyerOffers")
   sellerOffers Offer[]   @relation("SellerOffers")
-  messages     Message[] // 👈 QUESTO MANCAVA
+  messages     Message[]
+
+  // ✅ CHAT (generiche: possono essere da offerta o da perizia)
+  buyerChats  Chat[] @relation("BuyerChats")
+  sellerChats Chat[] @relation("SellerChats")
+
+  // ✅ PERIZIATORE
+  inspectorProfile InspectorProfile?
+
+  // ✅ Richieste perizia create come venditore
+  sellerInspectionRequests InspectionRequest[] @relation("SellerInspectionRequests")
+
+  // ✅ RESOCONTI creati dal periziatore come utente
+  inspectionReports InspectionReport[]
+}
+
+model InspectorProfile {
+  id     String @id @default(cuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  workshopName    String
+  workshopAddress String?
+  email           String
+  phone           String
+
+  // posizione officina
+  city      String?
+  latitude  Float?
+  longitude Float?
+
+  // raggio operativo
+  radiusKm Int @default(70)
+
+  // orario lavorativo base (minuti da mezzanotte)
+  workStartMin Int @default(540) // 09:00
+  workEndMin   Int @default(1080) // 18:00
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // disponibilità (slot)
+  slots InspectorSlot[]
+
+  // richieste ricevute
+  requests               InspectionRequest[]
+  calendarConfirmedColor String              @default("#22c55e")
+
+  @@index([latitude, longitude])
+  @@index([radiusKm])
+}
+
+model InspectorSlot {
+  id          Int              @id @default(autoincrement())
+  inspectorId String
+  inspector   InspectorProfile @relation(fields: [inspectorId], references: [id], onDelete: Cascade)
+
+  startAt     DateTime
+  endAt       DateTime
+  isAvailable Boolean  @default(true)
+
+  createdAt DateTime @default(now())
+
+  // ✅ richieste che hanno occupato questo slot
+  requests InspectionRequest[]
+
+  @@index([inspectorId, startAt])
+  @@index([inspectorId, endAt])
+}
+
+model InspectionRequest {
+  id Int @id @default(autoincrement())
+
+  carId Int
+  car   Car @relation(fields: [carId], references: [id], onDelete: Cascade)
+
+  // venditore che richiede la perizia
+  sellerId String
+  seller   User   @relation("SellerInspectionRequests", fields: [sellerId], references: [id])
+
+  // periziatore matchato
+  inspectorId String
+  inspector   InspectorProfile @relation(fields: [inspectorId], references: [id], onDelete: Cascade)
+
+  // ✅ intervallo richiesto / assegnato
+  startAt DateTime
+  endAt   DateTime
+
+  // ✅ slot occupato (quello del periziatore)
+  inspectorSlotId Int
+  inspectorSlot   InspectorSlot @relation(fields: [inspectorSlotId], references: [id], onDelete: Cascade)
+
+  status    InspectionStatus @default(PENDING)
+  matchType MatchType        @default(PERFECT)
+
+  notes String?
+
+  // ✅ chat dedicata a questa perizia (1:1 opzionale)
+  chat Chat? @relation("InspectionChat")
+
+  // ✅ resoconto finale della perizia
+  report InspectionReport?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([inspectorId, startAt])
+  @@index([sellerId, createdAt])
+  @@index([carId])
+  @@index([inspectorSlotId])
 }
 
 model Car {
@@ -51,16 +160,14 @@ model Car {
   photos       String[]
   coverUrl     String?
 
-  // ✅ PERIZIA (NUOVO)
+  // ✅ PERIZIA
   isPeriziata       Boolean   @default(false)
   periziaDocUrl     String?
   periziaUploadedAt DateTime?
 
-  // RELAZIONE con Offer
   offers Offer[] @relation("CarOffers")
 
-  // ✅ NUOVI CAMPI INDIRIZZO
-  locationText String?   // es: "Via Rossi 45, Milano" (input utente)
+  locationText String?
   city         String?
   country      String?
 
@@ -75,9 +182,53 @@ model Car {
 
   likes Like[]
 
+  // ✅ richieste perizia
+  inspectionRequests InspectionRequest[]
+
+  // ✅ archivio resoconti legati all’auto
+  inspectionReports InspectionReport[]
+
   @@index([make, model])
   @@index([latitude, longitude])
   @@index([ownerId])
+}
+
+model InspectionReport {
+  id Int @id @default(autoincrement())
+
+  inspectionRequestId Int               @unique
+  inspectionRequest   InspectionRequest @relation(fields: [inspectionRequestId], references: [id], onDelete: Cascade)
+
+  inspectorUserId String
+  inspectorUser   User   @relation(fields: [inspectorUserId], references: [id], onDelete: Cascade)
+
+  carId Int
+  car   Car @relation(fields: [carId], references: [id], onDelete: Cascade)
+
+  title          String?
+  overallStatus  String?
+  plate          String?
+  vin            String?
+  km             Int?
+  inspectionDate DateTime?
+  location       String?
+
+  bodyworkNotes    String?
+  interiorNotes    String?
+  engineNotes      String?
+  mechanicsNotes   String?
+  tiresNotes       String?
+  electronicsNotes String?
+  testDriveNotes   String?
+  defectsFound     String?
+  finalOpinion     String?
+  estimatedValue   Int?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([inspectorUserId, createdAt])
+  @@index([carId])
 }
 
 model Like {
@@ -86,10 +237,10 @@ model Like {
   carId     Int
   createdAt DateTime @default(now())
 
-  user User @relation(fields: [userId], references: [id])
-  car  Car  @relation(fields: [carId], references: [id])
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  car  Car  @relation(fields: [carId], references: [id], onDelete: Cascade)
 
-  @@unique([userId, carId]) // uno stesso utente non può mettere "mi piace" due volte alla stessa auto
+  @@unique([userId, carId])
 }
 
 model Offer {
@@ -105,32 +256,60 @@ model Offer {
   seller User @relation("SellerOffers", fields: [sellerId], references: [id])
   car    Car  @relation("CarOffers", fields: [carId], references: [id])
 
+  // ✅ chat 1:1 per offerta
   chat Chat? @relation("OfferChat")
 }
 
 model Chat {
-  id        Int       @id @default(autoincrement())
-  offerId   Int       @unique
-  carId     Int
-  buyerId   String
-  sellerId  String
-  createdAt DateTime  @default(now())
-  
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now())
+
+  // ✅ partecipanti (sempre presenti)
+  buyerId  String
+  sellerId String
+  buyer    User   @relation("BuyerChats", fields: [buyerId], references: [id])
+  seller   User   @relation("SellerChats", fields: [sellerId], references: [id])
+
+  // ✅ chat da OFFERTA (opzionale)
+  offerId Int?
+  offer   Offer? @relation("OfferChat", fields: [offerId], references: [id])
+
+  // ✅ chat da PERIZIA (opzionale)
+  inspectionRequestId Int?
+  inspectionRequest   InspectionRequest? @relation("InspectionChat", fields: [inspectionRequestId], references: [id], onDelete: Cascade)
 
   messages Message[]
 
-  offer Offer @relation("OfferChat", fields: [offerId], references: [id])
+  @@unique([offerId])
+  @@unique([inspectionRequestId])
+  @@index([buyerId, createdAt])
+  @@index([sellerId, createdAt])
 }
 
 model Message {
-  id        Int      @id @default(autoincrement())
+  id        Int       @id @default(autoincrement())
   content   String
-  createdAt DateTime @default(now())
-  readAt    DateTime? // 👈 null = non letto
+  createdAt DateTime  @default(now())
+  readAt    DateTime?
 
   chatId Int
   chat   Chat @relation(fields: [chatId], references: [id], onDelete: Cascade)
 
   senderId String
   sender   User   @relation(fields: [senderId], references: [id])
+}
+
+enum InspectionStatus {
+  PENDING
+  ASSIGNED
+  SEEN
+  CONFIRMED
+  DONE
+  CANCELLED
+}
+
+enum MatchType {
+  PERFECT
+  FLEXIBLE_TIME
+  RADIUS
 }
