@@ -55,8 +55,7 @@ router.post("/", async (req, res) => {
       });
     }
 
-    // (opzionale) evita doppie offerte pending identiche per la stessa auto
-    // Se non lo vuoi, rimuovi questo blocco.
+    // evita doppie offerte pending identiche per la stessa auto
     const existing = await prisma.offer.findFirst({
       where: {
         carId: car.id,
@@ -122,7 +121,7 @@ router.post("/:id/accept", async (req, res) => {
       return res.status(403).json({ error: "Non autorizzato" });
     }
 
-    // (opzionale) se già accepted, ritorna chat esistente (idempotenza)
+    // idempotenza: se già accepted ritorna chat esistente
     if (offer.status === "ACCEPTED") {
       const existingChat = await prisma.chat.findUnique({
         where: { offerId: offer.id },
@@ -144,7 +143,6 @@ router.post("/:id/accept", async (req, res) => {
       chat = await prisma.chat.create({
         data: {
           offerId: offer.id,
-          carId: offer.carId,
           buyerId: offer.buyerId,
           sellerId: offer.sellerId,
         },
@@ -160,7 +158,7 @@ router.post("/:id/accept", async (req, res) => {
     return res.json({
       ok: true,
       offer: updatedOffer,
-      chatId: chat.id, // 👈 fondamentale per il frontend
+      chatId: chat.id,
     });
   } catch (err) {
     console.error("Errore accept:", err);
@@ -270,7 +268,6 @@ router.get("/received", async (req, res) => {
       return res.status(401).json({ error: "Not authenticated" });
     }
 
-    // ✅ garantisco esistenza user (così non esplode su utenti nuovi)
     const user = await ensureUserInDb(clerkUserId);
 
     const offers = await prisma.offer.findMany({
@@ -292,8 +289,7 @@ router.get("/received", async (req, res) => {
 
 /**
  * POST /api/offers/:id/reject
- * (prima era aperta) -> ora protetta, solo seller può fare reject
- * Nota: tu hai sia DECLINED che REJECTED, li tengo entrambi.
+ * solo seller
  */
 router.post("/:id/reject", async (req, res) => {
   try {

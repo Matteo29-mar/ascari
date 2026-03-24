@@ -1,12 +1,12 @@
 // src/pages/CarEdit.tsx
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useMemo} from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { http } from '../api';
 import { useAuth } from '@clerk/clerk-react';
 import AdditionalFields from '../components/AdditionalFields';
 import AscariPopup from '../components/AscariPopup'; // ⭐ AGGIUNTO
 import SelectableGrid from '../components/SelectableGrid';
-import { CAR_BRANDS, FUEL_TYPES } from '../../../backend/src/constants/carOptions';
+import { CAR_BRANDS, FUEL_TYPES, CAR_MODELS_BY_BRAND_KEY  } from '../../../backend/src/constants/carOptions';
 import SelectableDropdown from '../components/SelectableDropdown';
 
 type Car = {
@@ -77,6 +77,25 @@ const [offerPrice3, setOfferPrice3] = useState<number | ''>('');
   const [trimLevel, setTrimLevel] = useState('');
 
   const inputRef = useRef<HTMLInputElement | null>(null);
+
+  // ✅ Model options filtrate in base alla marca scelta
+  const modelOptions = useMemo(() => {
+    const list = CAR_MODELS_BY_BRAND_KEY[make] || [];
+    return list.map((m) => ({ key: m, label: m }));
+  }, [make]);
+
+  // ✅ Se cambia marca e il modello non appartiene più, lo resetto
+  useEffect(() => {
+    if (!make) {
+      if (model) setModel('');
+      return;
+    }
+    const list = CAR_MODELS_BY_BRAND_KEY[make] || [];
+    if (model && !list.includes(model)) {
+      setModel('');
+    }
+  }, [make]); // eslint-disable-line react-hooks/exhaustive-deps
+
 
   useEffect(() => {
     if (!id) return;
@@ -283,12 +302,16 @@ const [offerPrice3, setOfferPrice3] = useState<number | ''>('');
                   onChange={setMake}
                 />
               </div>
-              <input
-                className="input"
-                placeholder="Modello"
-                value={model}
-                onChange={(e) => setModel(e.target.value)}
-              />
+              {/* ✅ MODELLO A TENDINA (FILTRATA) */}
+              <div style={{ width: '100%' }}>
+                <label className="muted">Modello</label>
+                <SelectableDropdown
+                  label={make ? 'Modello' : 'Seleziona prima la marca'}
+                  value={model}
+                  options={modelOptions}
+                  onChange={setModel}
+                />
+              </div>
               <input
                 className="input"
                 placeholder="Titolo annuncio"

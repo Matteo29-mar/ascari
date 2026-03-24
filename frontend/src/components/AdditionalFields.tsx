@@ -68,7 +68,7 @@ export default function AdditionalFields({ data, setData }: AdditionalFieldsProp
               onChange={(e) => setData({ ...data, color: e.target.value })}
             />
 
-            <input
+{/*             <input
               className="input"
               type="number"
               placeholder="Prezzo (€)"
@@ -79,7 +79,7 @@ export default function AdditionalFields({ data, setData }: AdditionalFieldsProp
                   priceEur: e.target.value === '' ? '' : Number(e.target.value),
                 })
               }
-            />
+            /> */}
 
             <input
               className="input"

@@ -6,6 +6,7 @@ import { geocodeAddress } from "../lib/geocode";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
+import { buildPdfBuffer } from "../lib/buildInspection";
 
 
 const router = express.Router();
@@ -93,6 +94,7 @@ router.get("/:id/perizia/download", async (req, res) => {
   if (!clerkUserId) {
     return res.status(401).json({ error: "Not authenticated" });
   }
+
   if (Number.isNaN(carId)) {
     return res.status(400).json({ error: "Invalid car id" });
   }
@@ -100,16 +102,56 @@ router.get("/:id/perizia/download", async (req, res) => {
   try {
     const car = await prisma.car.findUnique({
       where: { id: carId },
-      select: { isPeriziata: true, periziaDocUrl: true },
+      include: {
+        inspectionRequests: {
+          orderBy: { createdAt: "desc" },
+          include: {
+            report: true,
+            inspector: {
+              include: {
+                user: {
+                  select: {
+                    id: true,
+                    name: true,
+                    email: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
     });
 
-    if (!car) return res.status(404).json({ error: "Car not found" });
-
-    if (!car.isPeriziata || !car.periziaDocUrl) {
-      return res.status(403).json({ error: "Perizia not available" });
+    if (!car) {
+      return res.status(404).json({ error: "Car not found" });
     }
 
-    return res.redirect(car.periziaDocUrl);
+    const latestInspectionWithReport = car.inspectionRequests.find((r) => r.report);
+
+    if (!latestInspectionWithReport?.report) {
+      return res.status(404).json({ error: "Perizia not available" });
+    }
+
+    const report = latestInspectionWithReport.report;
+
+    const pdfBuffer = await buildPdfBuffer({
+      ...report,
+      car,
+      inspectionRequest: latestInspectionWithReport,
+      inspectorUser: latestInspectionWithReport.inspector?.user ?? null,
+    });
+
+    const safeMake = car.make?.replace(/\s+/g, "-") || "auto";
+    const safeModel = car.model?.replace(/\s+/g, "-") || "veicolo";
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="perizia-${safeMake}-${safeModel}-${car.id}.pdf"`
+    );
+
+    return res.send(pdfBuffer);
   } catch (e) {
     console.error("GET /api/cars/:id/perizia/download error:", e);
     return res.status(500).json({ error: "Download error" });
@@ -724,54 +766,87 @@ router.put('/:id', async (req, res) => {
  * DELETE /api/cars/:id
  * 🔧 DELETE car: solo il proprietario può eliminarla
  */
-router.delete('/:id', async (req, res) => {
+router.delete("/:id", async (req, res) => {
   const { userId: clerkUserId } = getAuth(req);
   const carId = Number(req.params.id);
 
   if (!clerkUserId) {
-    return res.status(401).json({ error: 'Not authenticated' });
+    return res.status(401).json({ error: "Not authenticated" });
   }
 
   try {
     const user = await prisma.user.findUnique({
       where: { clerkId: clerkUserId },
     });
-
     if (!user) {
-      return res.status(404).json({ error: 'User not found' });
+      return res.status(404).json({ error: "User not found" });
     }
 
     const car = await prisma.car.findUnique({
       where: { id: carId },
       include: { owner: true },
     });
-
     if (!car) {
-      return res.status(404).json({ error: 'Car not found' });
+      return res.status(404).json({ error: "Car not found" });
     }
 
-    const offerCount = await prisma.offer.count({
-      where: { carId: carId }
-    });
+    // 🚫 non è la sua
+    if (car.ownerId !== user.id) {
+      return res.status(403).json({ error: "Not allowed to delete this car" });
+    }
 
+    // 1) blocco se ci sono offerte (attive o passate)
+    const offerCount = await prisma.offer.count({
+      where: { carId },
+    });
     if (offerCount > 0) {
       return res.status(400).json({
-        error: "Non puoi eliminare un'auto che ha offerte attive o passate."
+        error: "Non puoi eliminare un'auto che ha offerte attive o passate.",
       });
     }
 
-    // 🚫 non è la sua → 403
-    if (car.ownerId !== user.id) {
-      return res.status(403).json({ error: 'Not allowed to delete this car' });
+    // 2) blocco se c'è una perizia in corso (appuntamento non finito)
+    const now = new Date();
+
+    // "In corso" = status non finale E endAt >= adesso
+    // finali: DONE, CANCELLED
+    const inProgressInspection = await prisma.inspectionRequest.findFirst({
+      where: {
+        carId,
+        status: { in: ["PENDING", "ASSIGNED", "SEEN", "CONFIRMED"] },
+        endAt: { gte: now },
+      },
+      select: { id: true, status: true, startAt: true, endAt: true },
+      orderBy: { createdAt: "desc" },
+    });
+
+    if (inProgressInspection) {
+      return res.status(400).json({
+        error:
+          "Non puoi eliminare un'auto con una perizia in corso. Attendi la fine dell'appuntamento.",
+      });
     }
 
+    // (opzionale ma utile) Se esistono perizie non finali ma ormai finite nel tempo,
+    // le chiudiamo automaticamente prima di eliminare.
+    await prisma.inspectionRequest.updateMany({
+      where: {
+        carId,
+        status: { in: ["PENDING", "ASSIGNED", "SEEN", "CONFIRMED"] },
+        endAt: { lt: now },
+      },
+      data: { status: "CANCELLED" },
+    });
+
+    // 3) elimina l'auto
+    // Grazie alle cascade:
+    // Car -> InspectionRequest -> Chat -> Message
     await prisma.car.delete({ where: { id: carId } });
 
     return res.json({ success: true });
   } catch (err) {
-    console.error('DELETE /api/cars/:id error:', err);
-    return res.status(500).json({ error: 'Error deleting car' });
+    console.error("DELETE /api/cars/:id error:", err);
+    return res.status(500).json({ error: "Error deleting car" });
   }
 });
-
 export default router;

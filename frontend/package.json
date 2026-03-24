@@ -10,6 +10,10 @@
   },
   "dependencies": {
     "@clerk/clerk-react": "^5.59.4",
+    "@fullcalendar/daygrid": "^6.1.20",
+    "@fullcalendar/interaction": "^6.1.20",
+    "@fullcalendar/react": "^6.1.20",
+    "@fullcalendar/timegrid": "^6.1.20",
     "@mapbox/mapbox-gl-geocoder": "^5.1.2",
     "axios": "^1.7.2",
     "lodash.debounce": "^4.0.8",

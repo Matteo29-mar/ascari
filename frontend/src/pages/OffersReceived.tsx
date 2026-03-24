@@ -154,7 +154,7 @@ export default function OffersReceived() {
                 <b>
                   {offer.car?.make} {offer.car?.model}
                 </b>
-                <p className="muted">Da: {offer.buyer?.email}</p>
+                <p className="muted">Da: {offer.buyer?.name || offer.buyer?.email}</p>
                 <p>
                   Offerta: <b>{offer.amount} €</b>
                 </p>

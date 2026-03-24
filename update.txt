@@ -514,3 +514,196 @@ carico il mio garage:6:15 secondi
 sal 31/01/2026
 documnenti perizia danno errori
 tempo caricamento troppo lungo
+
+
+update 1/02/2026
+fatte alcune modifiche lato codice, c'era da normalizzare dei file che si spaccavano.
+Il problema principale era questo:
+il backend a volte non restituiva un array puro, ma un oggetto che conteneva l’array
+Il frontend però dava per scontato di ricevere sempre un array e faceva subito .map() / .filter() → crash e schermata nera.
+In più, in alcuni punti accedevi a proprietà non garantite (messages[0], .length) senza controllare se esistevano → altro TypeError.
+Soluzione:
+normalizzare sempre le risposte API
+usare fallback sicuri ([], ?., Array.isArray)
+Così l’app non crasha più anche se il backend risponde in modo incoerente.
+
+punti da aggiornare:
+- nuove marche
+- carico documenti delle perizie
+- tempo 
+- mettere nella chat il nome dell'utente vero
+
+-----------------------------
+update 02/02/2026
+aggiunto periziatore
+è stata aggiunto la sezione periziatore, come avevo scritto tempo fa è un'integrazione a tutto il sistema.
+loggatura con Clerck, entri come utente normale poi ti registri come periziatore, una volta registrato quella email
+diventa periziatore dentro il sistema ascari e ogni volta che accede va subito nella pagina periziatore.
+viene creato un form di compilazione in fase di registrazione, poi si trova in un'altra pagina.
+La pagina principale è la mia officina dove ha i dati dell'officina e il raggio di azione e il calendario per dare le disponibilità.
+Bozza quella pagina ma funzionante. 
+Ci sono altre pagine ma ora non sono integrate
+creato nella pagina del mio garage di un'utente normale il tasto contatta periziatore per il match come avevo scritto.
+Manca effettivamente l'aggancio tra la card auto e il periziatore disponibile anche se viene mandato il messaggio.
+
+Sono da finire:
+- design periziatore
+- integrazione tra card auto e orario disponibilità periziatore
+- pagina perizie ricevute
+- chat periziatore e resoconto perizie
+
+installato componente per il calendario
+npm i @fullcalendar/react @fullcalendar/daygrid @fullcalendar/timegrid @fullcalendar/interaction
+
+--------------------
+update 21/02/2026
+1. fatto vedere la perizia che viene ricevuta, eliminato una rotta di sovrapposizione e inspections.ts e tenuto solo la 
+    rotta di inspector.ts nel index.ts e creato nel inspectordashboard.tsx la visualizzazione
+2. Implementazione del tasto conferma e sistema chat tra periziztore e cliente e il messaggio automatico
+
+da migliorare
+1. auto già in contatto con un periziatore errore 404(stai cercando di contattare un periziatore).
+    Penso che sia per associazione tra periziatore e cliente, ma devo investigare il problema sta nel my-garage
+2. avere possibilità di modificare orario di perizia oppure lasciare la chat.
+    sarebbe meglio avere la possibilità di cambiare orario di perizia o tra 
+
+
+--------------------
+update 24/06/2026
+1. fatto un po di modifiche e risolto un po di errori:
+1️⃣Problema: Errore 404 – Richiesta fallita su MyGarage. La pagina MyGarage effettuava chiamate a endpoint non coerenti con le route backend (path errato o non registrato), generando 404.
+Soluzione: Allineamento delle route frontend con quelle realmente esposte dal backend e verifica della registrazione corretta dei router Express.
+2️⃣Problema: Errore 400 – Risorse non trovate / ID non valido Richieste del tipo /api/chat/undefined o ID non numerici generavano errori 400 o crash Prisma (id mancante/NaN).
+Soluzione:Validazione preventiva degli ID lato backend. Controllo e sanitizzazione degli ID lato frontend prima di chiamare le API. Blocco delle chiamate se il parametro non è valido.
+3️⃣Problema: Calendario – Miglioramento UI e colori Gli slot nel calendario non avevano differenziazione visiva chiara e non comunicavano bene lo stato.
+Soluzione:Introduzione di colori e miglioramento della resa visiva degli eventi FullCalendar per distinguere meglio disponibilità e stato.
+4️⃣Problemi: Problemi strutturali in chat.ts (backend)Mancata validazione dell’ID chat. Prisma crashava su findUnique con ID invalido. Mancata gestione coerente dello stato CANCELLED. Chat visibili anche quando non dovevano esserlo.
+Soluzione:Funzione centralizzata per parsing sicuro dell’ID. Blocco apertura chat al periziatore se perizia annullata. Filtro in lista chat per nascondere chat CANCELLED al periziatore. Migliore gestione permessi buyer/seller.
+5️⃣ Problemi in chat.tsx (frontend pagina chat) Polling attivo anche con ID non valido. Chiamate ripetute verso /chat/undefined. Mancata gestione elegante degli errori 403/404.
+Soluzione:Validazione preventiva del chatId. Blocco polling se ID non valido. Redirect automatico alla lista in caso di errore. Gestione popup per chat cancellate.
+6️⃣ Problemi in chatlist.tsx La lista chat generava richieste con ID undefined e link non validi.
+Soluzione:Pulizia e normalizzazione del payload backend.Filtro hard sulle chat senza ID valido. Rimozione di qualsiasi chiamata diretta a /chat/:id nella lista.
+7️⃣ Problema:Dopo annullamento perizia, la chat rimaneva visibile a entrambi o non era coerente con le regole di business.
+Soluzione:Regola: chat CANCELLED visibile solo al venditore. Blocco apertura e invio messaggi per il periziatore. Introduzione endpoint DELETE per eliminazione manuale. Popup lato venditore per gestione eliminazione.
+
+
+cose da migliorare:
+1. continuare a testare applicativo
+2. controllare carico e scarico pdf sia in test che in LOCALE
+3. incominciare a trovare soluzione per rendere immagini più leggere
+4. sistemare grafica di alcune cose
+5. far apparire i nomi o email non nomi strani nelle chat oppure nelle proposte
+6. rendere più intelligente il calendario
+
+--------------------
+update 26/02/2026
+1. aggiunto un di modelli e march edi auto dentro ascari, sono arrivato alla jaguar
+
+da migliorare
+1. al posto di scrivere il modello lo selezioni una volta scelta la marca come funziona per la mappa 
+
+
+------------------
+SAL 27/02/2026
+1. se c'è un like non posso eliminare auto, risolvere propetario deve eliminare auto in tranquillità
+2. nessun match proporre alternativa automatica
+3. mettere almeno 6 foto di carosello
+
+----------------
+update 03/03/2026
+1. tendina modello auto da selezionare al posto di scrivere
+2. modificato schema db per permettere di eliminare auto con like attivi da parte del proprietario,con un cascade sulla delete 
+    dell like, invece con offerte e perizie attive lascio il vincolo, perchè si possonon eliminare le offerte e devi attendere
+    il finire della perizia per "sbloccare auto"
+3. adesso si vedono le mail e i nomi veri quando ti arriva un'offerta e apri la chat con un utente e non più fittizzi. toccato il file
+    authUser.ts, chat.tsx 
+4. aggiunto marche e modelli da jaguar a mazda
+
+da migliorare/finire
+1. finire aggiunta marche e modelli
+2. creare numerino notifica sulla chat come per offerte 
+3. nessun match proporre alternativa automatica
+4. mettere almeno 6 foto di carosello
+5. creare resoconto periziatore 
+
+
+-------------------------
+update 11/03/2026
+1. creato resoconto per visualizzare le perizie fatte da lperiziatore, con nuovo va subito in associazione all'auto accettata, crea un nuovo resoconto, quando finisce, scarica il pdf, c'è in archivio
+   può eliminare, riscaricare e manda in modo automatico tramite il match i dati all'auto del vednitore, quindi il venditore non deve perdere tempo a caricare la perizia perchè
+   ci pensa in modo automatico il sistema.
+ installato dipendenze
+    npm install pdfkit e npm install -D @types/pdfkit
+ creato un nuovo file inspectorReports.tsx qui ci sono le funzioni frontend per fare tutte le funzionalità esempio salva, elimina, crea report eccetera...
+                      inspecrReportDEtail.tsx frontend per avere i dettagli del report creato 
+                      inspectoreport.ts backedn rotte API per creare, visualizzare il report ed aggangiarsi alle altre rotte 
+                      buildinspection.ts è una libresaria condivisa per i pdf creati al volo e farla arrivare al dettaglio auto, utile se ci sono altre cose per far scaricare pdf
+ modificato il main.tsx per inserire i blocchi route delle due nuove pagine frontend create 
+               index.ts inserito le rotte app.use per redigere il traffico.
+               schema.prisma modificato per permettere le varie conenssioni con il resoconto
+               cars.ts modificato la get del download perizia prima si bloccava per vecchia logica, ora accetta la creazione del pdf al volo tramite lib, che recupera dati dal pdf creato dal periziatore
+
+
+da migliorare
+1. ho notato che quando crea il report il periziatore, manda subito il pdf al dettaglio auto di chi vende( interessante) ma 
+    da un problema perchè poi non riesco a scaricare il pdf, migliorare questa funzionalità. Da valutare se lasciare che 
+    sia il periziatore in automatico a mettere la perizia sull'auto oppure scaricarla ed in un secondo momento utente fa upload
+    come ha sempre fatto
+2. finire aggiunta marche e modelli
+3. creare numerino notifica sulla chat come per offerte 
+4. nessun match proporre alternativa automatica
+5. mettere almeno 6 foto di carosello
+
+
+------------
+sal 13/03/2026
+da migliorare
+1. possibilità di fare foto 
+2. rimuovere blocco scarica perizia verso altri utenti.
+
+--------------------
+update 18/03/2026
+da fare
+1. correggere blocco scarico perizie altri utenti
+2. aggiungere le altre marche
+
+resoconto
+1. corretto blocco
+2. aggiunte tutte le marche e modelli
+3. migliorata grafica di alcuni pop up
+4. test funzionamento match periziatori, fatto test con due periziatori uno a Novara e uno a Vercelli, auto di Vercelli e a preso 
+    officina più vicina ovvero quella di vercelli.
+
+da migliorare
+1. ho fatto un test e se ci sono due periziatori di due città diverse NO e VC.
+    caso 1. venditore mette data x ma è città VC, ma periziatore città VC ha disponibilità Y ma perziatore città NO ha disponibilità x
+            da nessun match, errato qui è da sistemare, quello che noi vogliamo è dare un paio di tentativi.
+            primo tentativo, iniziale venditore mette data e ora se trova match vuol dire che nella città VC c'è disponibile alla data
+                             x un periziatore, va bene.
+            secondo tentativo, messaggio non ho trovato nessuno alla tua data, ma ho trovato qualcuno nella tua città ad un'altro orario disponibile, accetti o annulli. 
+                                se accetta automaticamente cambia dal venditore e va direttamente al periziatore
+            terzo tentativo, non trova nessuno in città a quella data, propone di cambiare data e di allargare il raggio di azione 
+                            con una barra per il raggio dal punto dell'auto per trovare qualcuno, se trova manda a quel periziatore
+                            che ha disponibilità
+            tentivo fallito, pop up nessun match, riprova in altre date e ricomincia dal primo tenttivo con una nuova immisione
+
+-------------------
+update 19/03/2026
+obiettivi
+1. sistemare il sistema di match alternativo
+
+resoconto
+1. costruito il sistema di match alternativo con alternative automatiche 
+
+
+----------------------
+sal 20/03/2026
+1. dopo un paio di tentativi non permettere più alternative di perizie
+2. far uscire gli altri periziatori
+
+----------------------
+update 24/03/2026
+1. portare in test applicativo
+
+note 
+non porto le modifiche del match le porterò successivamente a questa crazione del nuovo ambiente di test

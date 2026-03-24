@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { http } from '../api';
 import { useAuth } from '@clerk/clerk-react';
@@ -11,7 +11,7 @@ import {
 import AdditionalFields from '../components/AdditionalFields';
 import AscariPopup from '../components/AscariPopup'; // ⭐ FIX
 import SelectableGrid from '../components/SelectableGrid';
-import { CAR_BRANDS, FUEL_TYPES } from '../../../backend/src/constants/carOptions';
+import { CAR_BRANDS, FUEL_TYPES, CAR_MODELS_BY_BRAND_KEY } from '../../../backend/src/constants/carOptions';
 import SelectableDropdown from '../components/SelectableDropdown';
 
 
@@ -61,6 +61,24 @@ export default function CarNew() {
   const [showPopup, setShowPopup] = useState(false); // ⭐ FIX
 
   const inputRef = useRef<HTMLInputElement | null>(null);
+
+    // ✅ Model options filtrate in base alla marca scelta
+  const modelOptions = useMemo(() => {
+    const list = CAR_MODELS_BY_BRAND_KEY[make] || [];
+    return list.map((m) => ({ key: m, label: m }));
+  }, [make]);
+
+  // ✅ Se cambia marca e il modello non appartiene più, lo resetto
+  useEffect(() => {
+    if (!make) {
+      if (model) setModel('');
+      return;
+    }
+    const list = CAR_MODELS_BY_BRAND_KEY[make] || [];
+    if (model && !list.includes(model)) {
+      setModel('');
+    }
+  }, [make]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Carica bozza
   useEffect(() => {
@@ -237,12 +255,15 @@ export default function CarNew() {
                   onChange={setMake}
                 />
               </div>
-              <input
-                className="input"
-                placeholder="Modello"
-                value={model}
-                onChange={(e) => setModel(e.target.value)}
-              />
+              <div style={{ width: '100%' }}>
+                <label className="muted">Modello</label>
+                <SelectableDropdown
+                  label={make ? 'Modello' : 'Seleziona prima la marca'}
+                  value={model}
+                  options={modelOptions}
+                  onChange={setModel}
+                />
+              </div>
               <input
                 className="input"
                 placeholder="Titolo annuncio"
