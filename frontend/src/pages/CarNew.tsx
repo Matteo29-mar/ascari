@@ -11,7 +11,7 @@ import {
 import AdditionalFields from '../components/AdditionalFields';
 import AscariPopup from '../components/AscariPopup'; // ⭐ FIX
 import SelectableGrid from '../components/SelectableGrid';
-import { CAR_BRANDS, FUEL_TYPES, CAR_MODELS_BY_BRAND_KEY } from '../../../backend/src/constants/carOptions';
+import { CAR_BRANDS, FUEL_TYPES, CAR_MODELS_BY_BRAND_KEY } from '../constants/carOptions';
 import SelectableDropdown from '../components/SelectableDropdown';
 
 
