@@ -13,7 +13,7 @@ import {
   CAR_BRANDS,
   FUEL_TYPES,
   CAR_MODELS_BY_BRAND_KEY,
-} from "../../../backend/src/constants/carOptions";
+} from "../constants/carOptions";
 
 type CarPin = {
   id: number;
