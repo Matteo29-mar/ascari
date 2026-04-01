@@ -5,19 +5,19 @@
 ===================== */
 :root{
   --bg: #0b0f14;
-  --bg-card: rgba(255,255,255,0.06); /* card bg default */
+  --bg-card: rgba(255,255,255,0.06);
   --panel: rgba(255,255,255,0.06);
   --panel-strong: rgba(255,255,255,0.12);
 
   --text: #e9eef5;
   --muted: #9fb0c3;
 
-  --brand: #6ee7ff;         /* ciano soft */
-  --brand-2: #b794f4;       /* lilla soft */
-  --accent: #4ade80;        /* verde soft */
+  --brand: #6ee7ff;
+  --brand-2: #b794f4;
+  --accent: #4ade80;
   --danger: #ff6b6b;
 
-  --primary: #4ef2c8;       /* usato da button.primary */
+  --primary: #4ef2c8;
   --radius: 18px;
   --shadow: 0 10px 30px rgba(0,0,0,0.35);
 
@@ -33,7 +33,6 @@
   --text: #ffffff;
   --muted: #9aa4b2;
   --primary: #4ef2c8;
-
   color-scheme: dark;
 }
 
@@ -43,7 +42,6 @@
   --text: #0b0f14;
   --muted: #5f6b7a;
   --primary: #0bb489;
-
   color-scheme: light;
 }
 
@@ -52,7 +50,15 @@
 ===================== */
 *{ box-sizing: border-box; }
 
-html, body, #root{ height: 100%; }
+html, body, #root{
+  height: 100%;
+  width: 100%;
+}
+
+html, body{
+  max-width: 100%;
+  overflow-x: hidden;
+}
 
 body{
   margin: 0;
@@ -63,10 +69,48 @@ body{
     "Apple Color Emoji","Segoe UI Emoji";
 }
 
+img{
+  max-width: 100%;
+}
+
+a, button{
+  -webkit-tap-highlight-color: transparent;
+}
+
 /* Utility */
-.container{ max-width: 1200px; margin: 0 auto; padding: 24px; }
+.container{
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.page-container{
+  min-width: 0;
+}
+
 .h1{ font-size: 28px; margin: 12px 0 2px; }
 .muted{ color: var(--muted); }
+
+/* =====================
+   GENERIC BUTTON LINK
+===================== */
+.btn-link{
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  padding: 0;
+  font: inherit;
+  text-decoration: none;
+  opacity: 0.92;
+  transition: opacity 0.2s ease;
+}
+
+.btn-link:hover{
+  opacity: 1;
+}
 
 /* =====================
    NAV
@@ -74,7 +118,7 @@ body{
 .nav{
   position: sticky;
   top: 0;
-  z-index: 20;
+  z-index: 100;
   backdrop-filter: blur(10px);
   background: linear-gradient(180deg, rgba(0,0,0,0.35), rgba(0,0,0,0.10));
   border-bottom: 1px solid var(--panel-strong);
@@ -85,7 +129,16 @@ body{
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 16px 24px;
+  min-height: 72px;
+  padding-top: 14px;
+  padding-bottom: 14px;
+}
+
+.nav-left{
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  flex-shrink: 0;
 }
 
 .brand{
@@ -94,6 +147,15 @@ body{
   gap: 10px;
   font-weight: 700;
   letter-spacing: 0.4px;
+}
+
+.brand-link{
+  color: var(--text);
+  text-decoration: none;
+}
+
+.brand-link:hover{
+  opacity: 1;
 }
 
 .badge{
@@ -106,11 +168,187 @@ body{
 
 .nav a{
   color: var(--text);
-  opacity: .9;
+  opacity: .92;
   text-decoration: none;
 }
 
 .nav a:hover{ opacity: 1; }
+
+.nav-desktop{
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 20px;
+  min-width: 0;
+  flex: 1;
+}
+
+.nav-links{
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 16px;
+  min-width: 0;
+  flex-wrap: nowrap;
+}
+
+.nav-auth{
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.nav-link-badge{
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.nav-pill{
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  margin-left: 8px;
+  border-radius: 999px;
+  background: var(--primary);
+  color: #000;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.nav-mobile-actions{
+  display: none;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+}
+
+.nav-mobile-auth{
+  display: flex;
+  align-items: center;
+}
+
+.hamburger-btn{
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  border: 1px solid var(--panel-strong);
+  background: var(--panel);
+  display: inline-flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.hamburger-btn span{
+  display: block;
+  width: 18px;
+  height: 2px;
+  border-radius: 999px;
+  background: var(--text);
+}
+
+.nav-mobile-overlay{
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.5);
+  z-index: 101;
+}
+
+.nav-mobile-panel{
+  position: fixed;
+  top: 73px;
+  left: 12px;
+  right: 12px;
+  max-height: calc(100vh - 90px);
+  overflow-y: auto;
+  z-index: 102;
+  border: 1px solid var(--panel-strong);
+  border-radius: 18px;
+  background: rgba(10, 14, 20, 0.98);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(12px);
+}
+
+.nav-mobile-panel-inner{
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+}
+
+.nav-mobile-link{
+  width: 100%;
+  min-height: 46px;
+  border-radius: 12px;
+  padding: 12px 14px;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  text-align: left;
+  text-decoration: none;
+  font: inherit;
+}
+
+.nav-mobile-link:hover{
+  background: var(--panel);
+  border-color: var(--panel-strong);
+  opacity: 1;
+}
+
+.nav-mobile-link-badge{
+  justify-content: space-between;
+}
+
+.nav-mobile-auth-block{
+  padding-top: 8px;
+  margin-top: 4px;
+  border-top: 1px solid var(--panel-strong);
+}
+
+/* SeiAltro */
+.sei-altro{
+  position: relative;
+}
+
+.sei-altro .btn-link{
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sei-altro-dropdown{
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  min-width: 200px;
+  padding: 8px;
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  background: var(--panel-strong);
+  border: 1px solid rgba(255,255,255,0.12);
+  z-index: 120;
+}
+
+.sei-altro-dropdown.mobile{
+  position: static;
+  min-width: 0;
+  width: 100%;
+  margin-top: 6px;
+  background: rgba(255,255,255,0.04);
+  border-radius: 12px;
+}
 
 /* =====================
    TOOLBAR / INPUTS
@@ -124,6 +362,7 @@ body{
 }
 
 .input, .select{
+  max-width: 100%;
   background: var(--panel);
   border: 1px solid var(--panel-strong);
   color: var(--text);
@@ -135,13 +374,18 @@ body{
 
 .input::placeholder{ color: #9fb0c380; }
 
+.input:focus,
+.select:focus{
+  border-color: rgba(110,231,255,0.55);
+  box-shadow: 0 0 0 4px rgba(110,231,255,0.10);
+}
+
 .btn{
   height: 42px;
   padding: 0 16px;
   border-radius: 12px;
   border: 1px solid transparent;
   cursor: pointer;
-
   color: #0b0f14;
   font-weight: 600;
   background: linear-gradient(135deg, var(--brand), var(--accent));
@@ -163,7 +407,6 @@ body{
 
 .btn:disabled{ opacity: .6; cursor: not-allowed; }
 
-/* Extra button style used in some pages */
 button.primary{
   background: var(--primary);
   border: none;
@@ -171,7 +414,67 @@ button.primary{
 }
 
 /* =====================
-   GRID + CARD (FIX: tutte uguali)
+   ASCARI ERROR STATES
+===================== */
+.ascari-input-error{
+  border-color: rgba(255, 107, 107, 0.95) !important;
+  box-shadow:
+    0 0 0 1px rgba(255, 107, 107, 0.85),
+    0 0 0 4px rgba(255, 107, 107, 0.12),
+    0 0 22px rgba(255, 107, 107, 0.20) !important;
+  animation: ascariErrorPulse 1.9s ease-in-out infinite;
+}
+
+.ascari-input-error::placeholder{
+  color: rgba(255, 160, 160, 0.95);
+}
+
+.ascari-section-error{
+  border-color: rgba(255, 107, 107, 0.92) !important;
+  box-shadow:
+    0 0 0 1px rgba(255, 107, 107, 0.82),
+    0 0 0 4px rgba(255, 107, 107, 0.08),
+    0 0 28px rgba(255, 107, 107, 0.14) !important;
+}
+
+.ascari-warning-banner{
+  border: 1px solid rgba(255, 107, 107, 0.65);
+  background:
+    linear-gradient(180deg, rgba(255, 107, 107, 0.12), rgba(255, 107, 107, 0.05));
+  color: #ffd7d7;
+  border-radius: 14px;
+  padding: 12px 14px;
+  box-shadow: 0 0 22px rgba(255, 107, 107, 0.12);
+}
+
+.ascari-field-help-error{
+  color: #ff9b9b;
+  font-size: 13px;
+}
+
+@keyframes ascariErrorPulse{
+  0%{
+    box-shadow:
+      0 0 0 1px rgba(255, 107, 107, 0.82),
+      0 0 0 4px rgba(255, 107, 107, 0.08),
+      0 0 18px rgba(255, 107, 107, 0.10);
+  }
+  50%{
+    box-shadow:
+      0 0 0 1px rgba(255, 107, 107, 0.98),
+      0 0 0 5px rgba(255, 107, 107, 0.14),
+      0 0 26px rgba(255, 107, 107, 0.24);
+  }
+  100%{
+    box-shadow:
+      0 0 0 1px rgba(255, 107, 107, 0.82),
+      0 0 0 4px rgba(255, 107, 107, 0.08),
+      0 0 18px rgba(255, 107, 107, 0.10);
+  }
+}
+
+/* =====================
+   GRID + CARD
 ===================== */
 .grid{
   display: grid;
@@ -184,7 +487,7 @@ button.primary{
 .card{
   display: flex;
   flex-direction: column;
-
+  min-width: 0;
   background: var(--bg-card);
   border: 1px solid var(--panel-strong);
   border-radius: var(--radius);
@@ -192,10 +495,9 @@ button.primary{
   overflow: hidden;
 }
 
-/* ✅ IMMAGINE STANDARD PER TUTTE LE CARD */
 .card-image{
   width: 100%;
-  aspect-ratio: 16 / 9;        /* cambia qui se vuoi 4/3 */
+  aspect-ratio: 16 / 9;
   object-fit: cover;
   object-position: center;
   display: block;
@@ -207,16 +509,15 @@ button.primary{
   flex: 1;
   display: flex;
   flex-direction: column;
+  min-width: 0;
 }
 
-/* se in pagina usi .card-actions */
 .card-actions{
   margin-top: auto;
 }
 
-/* Utility layouts */
-.flex{ display: flex; gap: 10px; align-items: center; }
-.row{ display: flex; gap: 10px; align-items: center; }
+.flex{ display: flex; gap: 10px; align-items: center; min-width: 0; }
+.row{ display: flex; gap: 10px; align-items: center; min-width: 0; }
 .row.space{ justify-content: space-between; }
 
 .kv{
@@ -405,7 +706,10 @@ button.primary{
   border-radius: 8px;
 }
 
-.chat-info{ flex: 1; }
+.chat-info{
+  flex: 1;
+  min-width: 0;
+}
 
 .chat-info p{
   margin: 4px 0 0;
@@ -418,7 +722,6 @@ button.primary{
   align-items: center;
 }
 
-/* Status dot (chat) - renamed to avoid clash with carousel .dot */
 .chat-status-dot{
   width: 10px;
   height: 10px;
@@ -426,7 +729,6 @@ button.primary{
   border-radius: 50%;
 }
 
-/* Chat header */
 .chat-header{
   display: flex;
   align-items: center;
@@ -450,7 +752,6 @@ button.primary{
   font-size: 14px;
 }
 
-/* Chat input */
 .chat-input-container{
   margin-top: 20px;
   background: #111;
@@ -484,7 +785,6 @@ button.primary{
   resize: none;
 }
 
-/* Preview image */
 .image-preview{
   position: relative;
   margin-bottom: 10px;
@@ -505,6 +805,7 @@ button.primary{
   border-radius: 50%;
   cursor: pointer;
 }
+
 /* --- Mapbox Popup fix (Ascari) --- */
 .ascari-popup .mapboxgl-popup-content {
   padding: 0 !important;
@@ -513,11 +814,11 @@ button.primary{
 }
 
 .ascari-popup .mapboxgl-popup-tip {
-  border-top-color: rgba(15,18,22,0.98) !important; /* punta coerente col popup */
+  border-top-color: rgba(15,18,22,0.98) !important;
 }
 
 .ascari-popup {
-  max-width: none !important; /* evita che Mapbox restringa */
+  max-width: none !important;
 }
 
 .ascari-popup__inner {
@@ -527,8 +828,9 @@ button.primary{
 }
 
 .ascari-popup__card {
-  margin: 0 auto; /* extra safety */
+  margin: 0 auto;
 }
+
 /* --- Calendar wrapper --- */
 .calendar-wrap {
   margin-top: 12px;
@@ -539,7 +841,6 @@ button.primary{
   overflow: hidden;
 }
 
-/* FullCalendar dark-ish */
 .fc {
   --fc-page-bg-color: transparent;
   --fc-border-color: rgba(255,255,255,0.10);
@@ -631,7 +932,42 @@ button.primary{
   align-items: center;
 }
 
-/* --- Mobile tweaks --- */
+/* =====================
+   RESPONSIVE
+===================== */
+@media (max-width: 900px) {
+  .container{
+    padding: 16px;
+  }
+
+  .nav-inner{
+    min-height: 68px;
+    padding-top: 12px;
+    padding-bottom: 12px;
+  }
+
+  .nav-desktop{
+    display: none;
+  }
+
+  .nav-mobile-actions{
+    display: flex;
+  }
+
+  .nav-mobile-auth > *{
+    display: none;
+  }
+
+  .nav-mobile-auth-block > *{
+    display: flex;
+    width: 100%;
+  }
+
+  .grid{
+    grid-template-columns: 1fr;
+  }
+}
+
 @media (max-width: 720px) {
   .fc .fc-toolbar {
     flex-direction: column;
@@ -652,5 +988,312 @@ button.primary{
 
   .modal-actions .btn {
     width: 100%;
+  }
+
+  .footer-actions{
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .chat-input-row{
+    flex-direction: column;
+  }
+}
+
+@media (max-width: 560px) {
+  .container{
+    padding: 14px;
+  }
+
+  .brand span{
+    font-size: 15px;
+  }
+
+  .hamburger-btn{
+    width: 42px;
+    height: 42px;
+  }
+
+  .nav-mobile-panel{
+    left: 10px;
+    right: 10px;
+    top: 70px;
+  }
+
+  .input,
+  .select,
+  .btn{
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .toolbar{
+    align-items: stretch;
+  }
+
+  .row,
+  .flex{
+    flex-wrap: wrap;
+  }
+}
+
+/* =====================
+   EXPLORE MAP
+===================== */
+.explore-map-page{
+  height: calc(100vh - 70px);
+  width: 100%;
+  position: relative;
+}
+
+.explore-map-toolbar{
+  position: absolute;
+  z-index: 10;
+  left: 12px;
+  right: 12px;
+  top: 12px;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.explore-map-toolbar-shell{
+  width: 100%;
+  max-width: 1100px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  pointer-events: auto;
+}
+
+.explore-mobile-toggle{
+  width: 100%;
+  min-height: 46px;
+  display: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,0.10);
+  background: rgba(10,12,14,0.82);
+  backdrop-filter: blur(8px);
+  color: var(--text);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: var(--shadow);
+}
+
+.explore-mobile-toggle-arrow{
+  transition: transform 0.2s ease;
+}
+
+.explore-mobile-toggle-arrow.open{
+  transform: rotate(180deg);
+}
+
+.explore-map-toolbar-row{
+  width: 100%;
+  max-width: 1100px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 12px;
+  border-radius: 14px;
+  background: rgba(10,12,14,0.72);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255,255,255,0.08);
+}
+
+.explore-geocoder-wrap{
+  flex: 1 1 320px;
+  min-width: 240px;
+}
+
+.explore-geocoder{
+  width: 100%;
+  min-width: 0;
+}
+
+.explore-control{
+  min-width: 0;
+  height: 42px;
+  padding: 0 12px;
+  border-radius: 12px;
+  border: 1px solid var(--panel-strong);
+  background: rgba(255,255,255,0.08);
+  color: var(--text);
+  outline: none;
+}
+
+.explore-control-small{
+  width: 140px;
+}
+
+.explore-radius-group{
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.explore-radius-label,
+.explore-radius-unit{
+  color: var(--text);
+  opacity: 0.85;
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+.explore-radius-input{
+  width: 80px;
+}
+
+.explore-refresh-btn{
+  height: 42px;
+  min-width: 120px;
+}
+
+.explore-geo-overlay-wrap{
+  position: absolute;
+  z-index: 20;
+  left: 0;
+  right: 0;
+  bottom: 14px;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+  padding: 0 12px;
+}
+
+.explore-geo-overlay{
+  pointer-events: none;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: rgba(0,0,0,0.55);
+  color: white;
+  font-size: 13px;
+  border: 1px solid rgba(255,255,255,0.12);
+  text-align: center;
+}
+
+.explore-geocoder .mapboxgl-ctrl-geocoder{
+  width: 100%;
+  max-width: none;
+  min-width: 0;
+  background: rgba(255,255,255,0.08);
+  border: 1px solid var(--panel-strong);
+  box-shadow: none;
+  border-radius: 12px;
+}
+
+.explore-geocoder .mapboxgl-ctrl-geocoder--input{
+  height: 42px;
+  color: var(--text);
+  background: transparent;
+}
+
+.explore-geocoder .mapboxgl-ctrl-geocoder--input::placeholder{
+  color: var(--muted);
+}
+
+.explore-geocoder .mapboxgl-ctrl-geocoder--icon{
+  top: 10px;
+}
+
+.explore-geocoder .mapboxgl-ctrl-geocoder--button{
+  background: transparent;
+}
+
+@media (min-width: 981px){
+  .explore-control{
+    flex: 0 1 auto;
+  }
+}
+
+@media (max-width: 980px){
+  .explore-map-toolbar-row{
+    justify-content: center;
+  }
+
+  .explore-geocoder-wrap{
+    flex: 1 1 100%;
+  }
+
+  .explore-control{
+    flex: 1 1 220px;
+  }
+
+  .explore-control-small{
+    flex: 1 1 180px;
+    width: auto;
+  }
+
+  .explore-radius-group{
+    flex: 1 1 220px;
+    justify-content: center;
+    min-height: 42px;
+    padding: 0 10px;
+    border-radius: 12px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+  }
+
+  .explore-refresh-btn{
+    flex: 1 1 220px;
+  }
+}
+
+@media (max-width: 640px){
+  .explore-map-page{
+    height: calc(100vh - 68px);
+  }
+
+  .explore-map-toolbar{
+    left: 10px;
+    right: 10px;
+    top: 10px;
+  }
+
+  .explore-mobile-toggle{
+    display: flex;
+  }
+
+  .explore-map-toolbar-row{
+    gap: 10px;
+    padding: 10px;
+    border-radius: 16px;
+  }
+
+  .explore-geocoder-wrap,
+  .explore-control,
+  .explore-control-small,
+  .explore-refresh-btn{
+    width: 100%;
+    flex: 1 1 100%;
+  }
+
+  .explore-radius-group{
+    width: 100%;
+    flex: 1 1 100%;
+    justify-content: center;
+    flex-wrap: wrap;
+    padding: 10px 12px;
+  }
+
+  .explore-radius-input{
+    width: 92px;
+  }
+
+  .explore-geo-overlay{
+    border-radius: 14px;
+    max-width: 100%;
+  }
+
+  .ascari-popup__card{
+    width: min(260px, calc(100vw - 40px)) !important;
   }
 }

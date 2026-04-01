@@ -115,6 +115,24 @@ function slotIsSameDayLocal(slotStartAt: Date, requestedDate: string) {
   return start.date === requestedDate;
 }
 
+function formatDateTimeRome(date: Date) {
+  return new Intl.DateTimeFormat("it-IT", {
+    timeZone: "Europe/Rome",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).format(date);
+}
+
+function buildGoogleMapsLink(address?: string | null, city?: string | null) {
+  const full = [address?.trim(), city?.trim()].filter(Boolean).join(", ");
+  if (!full) return null;
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(full)}`;
+}
+
 async function geocodeWorkshopIfPossible(
   workshopAddress?: string | null,
   city?: string | null
@@ -127,7 +145,10 @@ async function geocodeWorkshopIfPossible(
   }
 
   try {
-    const geo = await geocodeAddress(cleanAddress || cleanCity, cleanCity || undefined);
+    const geo = await geocodeAddress(
+      cleanAddress || cleanCity,
+      cleanCity || undefined
+    );
     if (!geo) return null;
 
     return {
@@ -1043,7 +1064,13 @@ router.post("/inspections/:id/confirm", async (req, res) => {
 
     const myProfile = await prisma.inspectorProfile.findUnique({
       where: { userId: meUser.id },
-      select: { id: true, userId: true, workshopName: true },
+      select: {
+        id: true,
+        userId: true,
+        workshopName: true,
+        workshopAddress: true,
+        city: true,
+      },
     });
     if (!myProfile) {
       return res.status(404).json({ error: "Profilo periziatore non trovato" });
@@ -1054,7 +1081,15 @@ router.post("/inspections/:id/confirm", async (req, res) => {
       include: {
         car: { select: { make: true, model: true, year: true } },
         seller: { select: { id: true, name: true, email: true } },
-        inspector: { select: { id: true, userId: true } },
+        inspector: {
+          select: {
+            id: true,
+            userId: true,
+            workshopName: true,
+            workshopAddress: true,
+            city: true,
+          },
+        },
       },
     });
 
@@ -1093,12 +1128,32 @@ router.post("/inspections/:id/confirm", async (req, res) => {
         });
       }
 
-      const startTxt = new Date(ir.startAt).toLocaleString();
-      const endTxt = new Date(ir.endAt).toLocaleString();
+      const workshopAddress =
+        ir.inspector.workshopAddress ??
+        myProfile.workshopAddress ??
+        null;
+
+      const workshopCity =
+        ir.inspector.city ??
+        myProfile.city ??
+        null;
+
+      const mapsLink = buildGoogleMapsLink(workshopAddress, workshopCity);
+
+      const startTxt = formatDateTimeRome(new Date(ir.startAt));
+      const endTxt = formatDateTimeRome(new Date(ir.endAt));
+
+      const addressLine = workshopAddress
+        ? workshopCity
+          ? `${workshopAddress}, ${workshopCity}`
+          : workshopAddress
+        : workshopCity || "Indirizzo non disponibile";
 
       const autoText =
         `La sua richiesta di perizia è stata accettata ✅\n` +
         `Giorno/ora: ${startTxt} → ${endTxt}\n` +
+        `Indirizzo officina: ${addressLine}\n` +
+        `${mapsLink ? `Google Maps: ${mapsLink}\n` : ""}` +
         `A presto.`;
 
       await tx.message.create({

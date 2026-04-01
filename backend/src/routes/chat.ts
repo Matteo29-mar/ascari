@@ -13,13 +13,11 @@ async function requireMe(req: any) {
     throw err;
   }
 
-  // ✅ invece di findUnique: garantisce che email/nome siano reali e aggiornati
   const me = await ensureUserInDb(clerkId);
   return me;
 }
 
 function parseChatId(raw: any) {
-  // gestisce: undefined, "undefined", "", "abc"
   if (!raw || raw === "undefined") return null;
   const n = Number(raw);
   if (!Number.isFinite(n) || n <= 0) return null;
@@ -27,8 +25,8 @@ function parseChatId(raw: any) {
 }
 
 /**
- * ✅ FIX IMPORTANTE:
- * Mettiamo /unread/count PRIMA di "/:id"
+ * GET /api/chat/unread/count
+ * Conteggio totale messaggi non letti per l'utente autenticato
  */
 router.get("/unread/count", async (req, res) => {
   try {
@@ -54,10 +52,9 @@ router.get("/unread/count", async (req, res) => {
 /**
  * GET /api/chat
  *
- * ✅ REGOLA PUNTO 2:
- * - Se chat è di PERIZIA e la perizia è CANCELLED:
- *   - la chat rimane visibile SOLO al venditore (sellerId)
- *   - il periziatore (buyerId) non la vede più in lista
+ * Regola:
+ * - se chat è di perizia e la perizia è CANCELLED
+ *   la chat resta visibile solo al venditore
  */
 router.get("/", async (req, res) => {
   try {
@@ -70,13 +67,10 @@ router.get("/", async (req, res) => {
       include: {
         buyer: { select: { id: true, name: true, email: true } },
         seller: { select: { id: true, name: true, email: true } },
-
         offer: { include: { car: true } },
-
         inspectionRequest: {
           include: { car: true },
         },
-
         messages: {
           orderBy: { createdAt: "desc" },
           take: 1,
@@ -86,12 +80,11 @@ router.get("/", async (req, res) => {
       take: 300,
     });
 
-    // ✅ filtro CANCELLED: visibile solo al seller
     const filtered = chats.filter((c) => {
-      if (!c.inspectionRequestId) return true; // non è perizia
+      if (!c.inspectionRequestId) return true;
       const status = c.inspectionRequest?.status;
       if (status !== "CANCELLED") return true;
-      return c.sellerId === me.id; // solo venditore
+      return c.sellerId === me.id;
     });
 
     const normalized = filtered.map((c) => {
@@ -129,10 +122,9 @@ router.get("/", async (req, res) => {
 /**
  * GET /api/chat/:id
  *
- * ✅ REGOLA PUNTO 2:
- * - se chat perizia è CANCELLED:
- *   - il periziatore (buyerId) non può aprirla più
- *   - il venditore (sellerId) può aprirla (per leggere il messaggio)
+ * - se chat perizia è CANCELLED
+ *   il periziatore non può più aprirla
+ *   il venditore può ancora aprirla
  */
 router.get("/:id", async (req, res) => {
   const chatId = parseChatId(req.params.id);
@@ -166,12 +158,10 @@ router.get("/:id", async (req, res) => {
 
     if (!chat) return res.status(404).json({ error: "Chat not found" });
 
-    // permessi
     if (chat.buyerId !== me.id && chat.sellerId !== me.id) {
       return res.status(403).json({ error: "Not allowed" });
     }
 
-    // ✅ blocco apertura al periziatore se CANCELLED
     if (
       chat.inspectionRequestId &&
       chat.inspectionRequest?.status === "CANCELLED" &&
@@ -180,7 +170,6 @@ router.get("/:id", async (req, res) => {
       return res.status(403).json({ error: "Chat chiusa (perizia annullata)" });
     }
 
-    // segna letti i messaggi dell’altro
     await prisma.message.updateMany({
       where: {
         chatId,
@@ -222,14 +211,21 @@ router.get("/:id", async (req, res) => {
 
 /**
  * POST /api/chat/:id/message
- * ✅ se perizia CANCELLED: blocca invio dal periziatore
+ * se perizia CANCELLED: blocca invio dal periziatore
  */
 router.post("/:id/message", async (req, res) => {
   const chatId = parseChatId(req.params.id);
   if (!chatId) return res.status(400).json({ error: "Chat id non valido" });
 
-  const { content } = req.body ?? {};
-  if (!content || String(content).trim() === "") {
+  const rawContent = req.body?.content;
+
+  if (typeof rawContent !== "string") {
+    return res.status(400).json({ error: "Message empty" });
+  }
+
+  const content = rawContent.replace(/\r\n/g, "\n");
+
+  if (content.trim() === "") {
     return res.status(400).json({ error: "Message empty" });
   }
 
@@ -240,6 +236,7 @@ router.post("/:id/message", async (req, res) => {
       where: { id: chatId },
       include: { inspectionRequest: true },
     });
+
     if (!chat) return res.status(404).json({ error: "Chat not found" });
 
     if (chat.buyerId !== me.id && chat.sellerId !== me.id) {
@@ -258,7 +255,7 @@ router.post("/:id/message", async (req, res) => {
       data: {
         chatId,
         senderId: me.id,
-        content: String(content),
+        content,
       },
     });
 
@@ -272,7 +269,6 @@ router.post("/:id/message", async (req, res) => {
 
 /**
  * DELETE /api/chat/:id
- * Cancella chat e messaggi (Message ha onDelete: Cascade su Chat)
  */
 router.delete("/:id", async (req, res) => {
   const chatId = parseChatId(req.params.id);

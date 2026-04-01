@@ -8,10 +8,11 @@ type Option = {
 
 type Props = {
   label: string;
-  value: string;          // <-- ora value è la KEY selezionata
+  value: string;
   options: Option[];
-  onChange: (value: string) => void; // <-- ritorna la KEY
-  disabled?: boolean;     // <-- (opzionale) utile per Modello
+  onChange: (value: string) => void;
+  disabled?: boolean;
+  hasError?: boolean;
 };
 
 export default function SelectableDropdown({
@@ -20,14 +21,17 @@ export default function SelectableDropdown({
   options,
   onChange,
   disabled,
+  hasError = false,
 }: Props) {
   const [open, setOpen] = useState(false);
 
-  const selected = options.find(o => o.key === value);
+  const selected = options.find((o) => o.key === value);
 
   return (
-    <div className="card" style={{ padding: 10, opacity: disabled ? 0.6 : 1 }}>
-      {/* HEADER */}
+    <div
+      className={`card ${hasError ? 'ascari-input-error' : ''}`}
+      style={{ padding: 10, opacity: disabled ? 0.6 : 1 }}
+    >
       <button
         type="button"
         disabled={disabled}
@@ -38,6 +42,7 @@ export default function SelectableDropdown({
           background: 'transparent',
           border: 'none',
           cursor: disabled ? 'not-allowed' : 'pointer',
+          color: 'inherit',
         }}
       >
         <div className="row" style={{ gap: 8 }}>
@@ -53,7 +58,6 @@ export default function SelectableDropdown({
         <span className="muted">{open ? '▲' : '▼'}</span>
       </button>
 
-      {/* CONTENUTO */}
       {open && !disabled && (
         <div
           className="grid"
@@ -63,7 +67,7 @@ export default function SelectableDropdown({
             gap: 8,
           }}
         >
-          {options.map(opt => {
+          {options.map((opt) => {
             const isSelected = value === opt.key;
 
             return (
@@ -71,7 +75,7 @@ export default function SelectableDropdown({
                 key={opt.key}
                 type="button"
                 onClick={() => {
-                  onChange(opt.key);   // ✅ salva la KEY
+                  onChange(opt.key);
                   setOpen(false);
                 }}
                 className="btn secondary"

@@ -26,12 +26,12 @@ type CarPin = {
   latitude: number;
   longitude: number;
   distanceKm: number;
-
   fuelType?: string | null;
   mileage?: number | null;
 };
 
 const MILAN = { lat: 45.4642, lng: 9.19 };
+const MOBILE_BREAKPOINT = 640;
 
 export default function ExploreMap() {
   const navigate = useNavigate();
@@ -53,6 +53,13 @@ export default function ExploreMap() {
   const [cars, setCars] = useState<CarPin[]>([]);
   const [selected, setSelected] = useState<CarPin | null>(null);
 
+  const [isMobile, setIsMobile] = useState(() =>
+    typeof window !== "undefined" ? window.innerWidth <= MOBILE_BREAKPOINT : false
+  );
+  const [filtersOpen, setFiltersOpen] = useState(() =>
+    typeof window !== "undefined" ? window.innerWidth > MOBILE_BREAKPOINT : true
+  );
+
   const geocoderContainerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<any>(null);
 
@@ -62,7 +69,17 @@ export default function ExploreMap() {
 
   const norm = (v: unknown) => String(v ?? "").trim().toLowerCase();
 
-  // overlay geolocalizzazione
+  useEffect(() => {
+    const onResize = () => {
+      const mobileNow = window.innerWidth <= MOBILE_BREAKPOINT;
+      setIsMobile(mobileNow);
+      setFiltersOpen(!mobileNow);
+    };
+
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
   useEffect(() => {
     if (askedGeo) return;
     setAskedGeo(true);
@@ -119,14 +136,14 @@ export default function ExploreMap() {
     return () => debouncedLoad.cancel();
   }, [center.lat, center.lng, radiusKm, makeKey, model, fuelKey, mileageMax, debouncedLoad]);
 
-  // Geocoder
   useEffect(() => {
     if (!geocoderContainerRef.current) return;
     if (!mapRef.current) return;
 
     geocoderContainerRef.current.innerHTML = "";
 
-    const mapImpl = (mapRef.current as any).getMap ? (mapRef.current as any).getMap() : null;
+    const mapImpl =
+      (mapRef.current as any).getMap ? (mapRef.current as any).getMap() : null;
 
     const geocoder = new MapboxGeocoder({
       accessToken: mapboxToken,
@@ -144,6 +161,9 @@ export default function ExploreMap() {
       const [lng, lat] = e.result.center;
       setCenter({ lat, lng });
       setSelected(null);
+      if (isMobile) {
+        setFiltersOpen(false);
+      }
     };
 
     geocoder.on("result", onResult);
@@ -151,7 +171,7 @@ export default function ExploreMap() {
     return () => {
       geocoder.off("result", onResult);
     };
-  }, [mapboxToken]);
+  }, [mapboxToken, isMobile]);
 
   const coverFor = (c: CarPin) => {
     if (c.coverUrl) return c.coverUrl;
@@ -169,10 +189,8 @@ export default function ExploreMap() {
     return cars.filter((c) => {
       if (brandLabel && norm(c.make) !== norm(brandLabel)) return false;
       if (model && norm(c.model) !== norm(model)) return false;
-
       if (fuelLabel && c.fuelType != null && norm(c.fuelType) !== norm(fuelLabel)) return false;
       if (mileageMax !== "" && c.mileage != null && Number(c.mileage) > Number(mileageMax)) return false;
-
       return true;
     });
   }, [cars, makeKey, model, fuelKey, mileageMax]);
@@ -181,7 +199,6 @@ export default function ExploreMap() {
     return makeKey ? CAR_MODELS_BY_BRAND_KEY[makeKey] ?? [] : [];
   }, [makeKey]);
 
-  // ---- UI helpers (popup) ----
   const POPUP_W = 260;
   const POPUP_IMG_H = 150;
 
@@ -191,88 +208,112 @@ export default function ExploreMap() {
     whiteSpace: "nowrap",
   };
 
+  const handleRefresh = () => {
+    loadCars(center.lat, center.lng);
+    if (isMobile) {
+      setFiltersOpen(false);
+    }
+  };
+
   return (
-    <div style={{ height: "calc(100vh - 70px)", width: "100%", position: "relative" }}>
-      {/* TOP BAR */}
-      <div
-        style={{
-          position: "absolute",
-          zIndex: 10,
-          left: 12,
-          right: 12,
-          top: 12,
-          display: "flex",
-          gap: 12,
-          alignItems: "center",
-          padding: 12,
-          borderRadius: 12,
-          background: "rgba(10,12,14,0.72)",
-          backdropFilter: "blur(8px)",
-          border: "1px solid rgba(255,255,255,0.08)",
-        }}
-      >
-        <div ref={geocoderContainerRef} style={{ minWidth: 280, flex: 1 }} />
+    <div className="explore-map-page">
+      <div className="explore-map-toolbar">
+        <div className="explore-map-toolbar-shell">
+          {isMobile && (
+            <button
+              type="button"
+              className="explore-mobile-toggle"
+              onClick={() => setFiltersOpen((v) => !v)}
+              aria-expanded={filtersOpen}
+            >
+              <span>Filtri mappa</span>
+              <span aria-hidden className={`explore-mobile-toggle-arrow ${filtersOpen ? "open" : ""}`}>
+                ▾
+              </span>
+            </button>
+          )}
 
-        <select value={makeKey} onChange={(e) => setMakeKey(e.target.value)} style={{ height: 40 }}>
-          <option value="">Marca (tutte)</option>
-          {CAR_BRANDS.map((b) => (
-            <option key={b.key} value={b.key}>
-              {b.label}
-            </option>
-          ))}
-        </select>
+          {filtersOpen && (
+            <div className="explore-map-toolbar-row">
+              <div className="explore-geocoder-wrap">
+                <div ref={geocoderContainerRef} className="explore-geocoder" />
+              </div>
 
-        <select
-          value={model}
-          onChange={(e) => setModel(e.target.value)}
-          style={{ height: 40 }}
-          disabled={!makeKey}
-          title={!makeKey ? "Seleziona prima la marca" : "Seleziona modello"}
-        >
-          <option value="">{makeKey ? "Modello (tutti)" : "Seleziona prima la marca"}</option>
-          {modelsForSelectedBrand.map((m) => (
-            <option key={m} value={m}>
-              {m}
-            </option>
-          ))}
-        </select>
+              <select
+                value={makeKey}
+                onChange={(e) => setMakeKey(e.target.value)}
+                className="explore-control"
+              >
+                <option value="">Marca (tutte)</option>
+                {CAR_BRANDS.map((b) => (
+                  <option key={b.key} value={b.key}>
+                    {b.label}
+                  </option>
+                ))}
+              </select>
 
-        <select value={fuelKey} onChange={(e) => setFuelKey(e.target.value)} style={{ height: 40 }}>
-          <option value="">Carburante (tutti)</option>
-          {FUEL_TYPES.map((f) => (
-            <option key={f.key} value={f.key}>
-              {f.label}
-            </option>
-          ))}
-        </select>
+              <select
+                value={model}
+                onChange={(e) => setModel(e.target.value)}
+                className="explore-control"
+                disabled={!makeKey}
+                title={!makeKey ? "Seleziona prima la marca" : "Seleziona modello"}
+              >
+                <option value="">
+                  {makeKey ? "Modello (tutti)" : "Seleziona prima la marca"}
+                </option>
+                {modelsForSelectedBrand.map((m) => (
+                  <option key={m} value={m}>
+                    {m}
+                  </option>
+                ))}
+              </select>
 
-        <input
-          type="number"
-          placeholder="Km auto max"
-          value={mileageMax}
-          onChange={(e) => setMileageMax(e.target.value === "" ? "" : Number(e.target.value))}
-          style={{ height: 40, width: 120 }}
-        />
+              <select
+                value={fuelKey}
+                onChange={(e) => setFuelKey(e.target.value)}
+                className="explore-control"
+              >
+                <option value="">Carburante (tutti)</option>
+                {FUEL_TYPES.map((f) => (
+                  <option key={f.key} value={f.key}>
+                    {f.label}
+                  </option>
+                ))}
+              </select>
 
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <span style={{ opacity: 0.85 }}>Raggio</span>
-          <input
-            type="number"
-            min={1}
-            max={100}
-            value={radiusKm}
-            onChange={(e) => setRadiusKm(Number(e.target.value))}
-            style={{ height: 40, width: 70 }}
-          />
-          <span style={{ opacity: 0.85 }}>km</span>
+              <input
+                type="number"
+                placeholder="Km auto max"
+                value={mileageMax}
+                onChange={(e) => setMileageMax(e.target.value === "" ? "" : Number(e.target.value))}
+                className="explore-control explore-control-small"
+              />
+
+              <div className="explore-radius-group">
+                <span className="explore-radius-label">Raggio</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={100}
+                  value={radiusKm}
+                  onChange={(e) => setRadiusKm(Number(e.target.value))}
+                  className="explore-control explore-radius-input"
+                />
+                <span className="explore-radius-unit">km</span>
+              </div>
+
+              <button
+                onClick={handleRefresh}
+                className="btn explore-refresh-btn"
+              >
+                Aggiorna
+              </button>
+            </div>
+          )}
         </div>
-
-        <button onClick={() => loadCars(center.lat, center.lng)} style={{ height: 40 }}>
-          Aggiorna
-        </button>
       </div>
 
-      {/* MAP */}
       <Map
         ref={mapRef}
         mapboxAccessToken={mapboxToken}
@@ -310,17 +351,15 @@ export default function ExploreMap() {
             closeOnClick={false}
             onClose={() => setSelected(null)}
             anchor="top"
-            // ✅ disattivo la X di default (troppo piccola) e metto la mia
             closeButton={false}
-            // un po' di offset per far respirare il popup rispetto al marker
             offset={18}
+            className="ascari-popup"
           >
-            {/* CARD POPUP STANDARD */}
             <div className="ascari-popup__inner">
               <div
                 className="ascari-popup__card"
                 style={{
-                  width: 260,
+                  width: POPUP_W,
                   position: "relative",
                   borderRadius: 14,
                   overflow: "hidden",
@@ -330,117 +369,92 @@ export default function ExploreMap() {
                   boxShadow: "0 18px 40px rgba(0,0,0,0.45)",
                 }}
               >
-              {/* ✅ CLOSE BUTTON (molto visibile) */}
-              <button
-                onClick={() => setSelected(null)}
-                aria-label="Chiudi"
-                title="Chiudi"
-                style={{
-                  position: "absolute",
-                  zIndex: 5,
-                  top: 10,
-                  right: 10,
-                  width: 34,
-                  height: 34,
-                  borderRadius: 999,
-                  border: "1px solid rgba(255,255,255,0.35)",
-                  background: "rgba(0,0,0,0.55)",
-                  color: "white",
-                  cursor: "pointer",
-                  display: "grid",
-                  placeItems: "center",
-                  fontSize: 18,
-                  lineHeight: 0,
-                  boxShadow: "0 8px 18px rgba(0,0,0,0.35)",
-                }}
-              >
-                ✕
-              </button>
-
-              {/* ✅ IMAGE: altezza fissa per uniformare tutte le card */}
-              <div
-                style={{
-                  width: "100%",
-                  height: POPUP_IMG_H,
-                  background: "rgba(255,255,255,0.06)",
-                }}
-              >
-                <img
-                  src={coverFor(selected)}
-                  alt={selected.title}
-                  style={{
-                    width: "100%",
-                    height: "100%",
-                    objectFit: "cover",
-                    display: "block",
-                  }}
-                  loading="lazy"
-                />
-              </div>
-
-              {/* CONTENT */}
-              <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 6 }}>
-                <div style={{ fontWeight: 800, fontSize: 14, ...clamp1 }}>
-                  {selected.make} {selected.model}
-                </div>
-
-                <div style={{ opacity: 0.85, fontSize: 13, ...clamp1 }}>
-                  {selected.title}
-                </div>
-
-                <div style={{ opacity: 0.75, fontSize: 12 }}>
-                  {selected.distanceKm.toFixed(1)} km • {selected.year}
-                </div>
-
-                <div style={{ height: 8 }} />
-
                 <button
-                  onClick={() => navigate(`/cars/${selected.id}`)}
+                  onClick={() => setSelected(null)}
+                  aria-label="Chiudi"
+                  title="Chiudi"
                   style={{
-                    width: "100%",
-                    height: 38,
-                    borderRadius: 10,
-                    border: "1px solid rgba(255,255,255,0.14)",
-                    background: "rgba(255,255,255,0.10)",
+                    position: "absolute",
+                    zIndex: 5,
+                    top: 10,
+                    right: 10,
+                    width: 34,
+                    height: 34,
+                    borderRadius: 999,
+                    border: "1px solid rgba(255,255,255,0.35)",
+                    background: "rgba(0,0,0,0.55)",
                     color: "white",
                     cursor: "pointer",
-                    fontWeight: 700,
+                    display: "grid",
+                    placeItems: "center",
+                    fontSize: 18,
+                    lineHeight: 0,
+                    boxShadow: "0 8px 18px rgba(0,0,0,0.35)",
                   }}
                 >
-                  Dettaglio
+                  ✕
                 </button>
+
+                <div
+                  style={{
+                    width: "100%",
+                    height: POPUP_IMG_H,
+                    background: "rgba(255,255,255,0.06)",
+                  }}
+                >
+                  <img
+                    src={coverFor(selected)}
+                    alt={selected.title}
+                    style={{
+                      width: "100%",
+                      height: "100%",
+                      objectFit: "cover",
+                      display: "block",
+                    }}
+                    loading="lazy"
+                  />
+                </div>
+
+                <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 6 }}>
+                  <div style={{ fontWeight: 800, fontSize: 14, ...clamp1 }}>
+                    {selected.make} {selected.model}
+                  </div>
+
+                  <div style={{ opacity: 0.85, fontSize: 13, ...clamp1 }}>
+                    {selected.title}
+                  </div>
+
+                  <div style={{ opacity: 0.75, fontSize: 12 }}>
+                    {selected.distanceKm.toFixed(1)} km • {selected.year}
+                  </div>
+
+                  <div style={{ height: 8 }} />
+
+                  <button
+                    onClick={() => navigate(`/cars/${selected.id}`)}
+                    style={{
+                      width: "100%",
+                      height: 38,
+                      borderRadius: 10,
+                      border: "1px solid rgba(255,255,255,0.14)",
+                      background: "rgba(255,255,255,0.10)",
+                      color: "white",
+                      cursor: "pointer",
+                      fontWeight: 700,
+                    }}
+                  >
+                    Dettaglio
+                  </button>
+                </div>
               </div>
-            </div>
             </div>
           </Popup>
         )}
       </Map>
 
-      {/* GEO OVERLAY */}
       {!geoDenied && askedGeo && (
-        <div
-          style={{
-            position: "absolute",
-            zIndex: 20,
-            left: 0,
-            right: 0,
-            bottom: 14,
-            display: "flex",
-            justifyContent: "center",
-            pointerEvents: "none",
-          }}
-        >
-          <div
-            style={{
-              pointerEvents: "none",
-              padding: "8px 12px",
-              borderRadius: 999,
-              background: "rgba(0,0,0,0.55)",
-              color: "white",
-              fontSize: 13,
-              border: "1px solid rgba(255,255,255,0.12)",
-            }}
-          >
+        <div className="explore-geo-overlay-wrap">
+          <div className="explore-geo-overlay">
             Se hai negato la posizione, la mappa parte da Milano.
           </div>
         </div>

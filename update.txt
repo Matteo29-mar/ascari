@@ -707,3 +707,32 @@ update 24/03/2026
 
 note 
 non porto le modifiche del match le porterò successivamente a questa crazione del nuovo ambiente di test
+
+
+------------------
+sal 27/03/2026
+migliorie
+1. numero notifiche sulla chat @
+2. pop up miglioramenti @
+4. modifica sezione chat, ovvero migliorare scrittura ( esempio a capo da invio) @
+5. indirizzi, mentre scrivi indirizzo che esca il suggerimento @
+6. riquadro rosso sui campi mancanti @
+7. indirizzo officina @
+8. modifica perizia da fare, esempio sui dati carazzorie aggiungere le foto 
+9. migliorare view da mobile @
+
+---------------
+update 28/03/2026
+1. migliorata view sul mobile messi gli hamburger per lo schermo più piccolo e migliorata view sulla mappa ( 9)
+2. migliorato inserimento indirizzi in fase di compilazione per post e update (5)
+3. aggiunte le notifiche sulle chat nuove (1)
+
+
+---------------
+update 01/04/2026
+1. pop up migliorati(2) dashboard periziatore, cardetail, inspectorworkshop per il periziatore
+2. inserito indirizzo dell'officina nel messaggio automatico per la perizia, con link a google maps (7)
+3. migliorata la sezione chat (4) esempio se clicchi invio non invia ma va a capo, devi cliccare il tasto invio e se non hai scritto nulla 
+    non invia niente.
+4. inserito i riquadri rossi in caso di dimenticanza, andato in bozza, mettendo il pop up che ti sei dimenticato i campi 
+    e cerchiando di rosso(6)

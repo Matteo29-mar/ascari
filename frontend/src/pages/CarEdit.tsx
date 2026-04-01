@@ -1,13 +1,12 @@
-// src/pages/CarEdit.tsx
-import React, { useEffect, useRef, useState, useMemo} from 'react';
+import React, { useEffect, useRef, useState, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { http } from '../api';
 import { useAuth } from '@clerk/clerk-react';
 import AdditionalFields from '../components/AdditionalFields';
-import AscariPopup from '../components/AscariPopup'; // ⭐ AGGIUNTO
-import SelectableGrid from '../components/SelectableGrid';
-import { CAR_BRANDS, FUEL_TYPES, CAR_MODELS_BY_BRAND_KEY  } from '../../../backend/src/constants/carOptions';
+import AscariPopup from '../components/AscariPopup';
+import { CAR_BRANDS, FUEL_TYPES, CAR_MODELS_BY_BRAND_KEY } from '../../../backend/src/constants/carOptions';
 import SelectableDropdown from '../components/SelectableDropdown';
+import AddressAutocomplete from '../components/AddressAutocomplete';
 
 type Car = {
   id: number;
@@ -15,9 +14,9 @@ type Car = {
   model: string;
   title: string;
   year: number;
-  offerPrice1: number,
-  offerPrice2: number,
-  offerPrice3: number,
+  offerPrice1: number;
+  offerPrice2: number;
+  offerPrice3: number;
   fuelType?: string | null;
   horsepower?: number | null;
   mileageKm?: number | null;
@@ -34,8 +33,9 @@ type Car = {
   engine?: string | null;
   trimLevel?: string | null;
   locationText?: string | null;
-  city?:string | null;
-
+  city?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
 };
 
 export default function CarEdit() {
@@ -46,7 +46,8 @@ export default function CarEdit() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
-  const [showPopup, setShowPopup] = useState(false); // ⭐ AGGIUNTO
+  const [showPopup, setShowPopup] = useState(false);
+
   const [make, setMake] = useState('');
   const [model, setModel] = useState('');
   const [title, setTitle] = useState('');
@@ -57,14 +58,13 @@ export default function CarEdit() {
   const [description, setDescription] = useState('');
   const [coverUrl, setCoverUrl] = useState<string>('');
   const [photos, setPhotos] = useState<string[]>([]);
-  // ⭐ Prezzi accettati (obbligatori)
-const [offerPrice1, setOfferPrice1] = useState<number | ''>('');
-const [offerPrice2, setOfferPrice2] = useState<number | ''>('');
-const [offerPrice3, setOfferPrice3] = useState<number | ''>('');
+  const [offerPrice1, setOfferPrice1] = useState<number | ''>('');
+  const [offerPrice2, setOfferPrice2] = useState<number | ''>('');
+  const [offerPrice3, setOfferPrice3] = useState<number | ''>('');
   const [locationText, setLocationText] = useState('');
   const [city, setCity] = useState('');
-
-
+  const [latitude, setLatitude] = useState<number | null>(null);
+  const [longitude, setLongitude] = useState<number | null>(null);
 
   const [color, setColor] = useState('');
   const [torqueNm, setTorqueNm] = useState<number | ''>('');
@@ -78,13 +78,11 @@ const [offerPrice3, setOfferPrice3] = useState<number | ''>('');
 
   const inputRef = useRef<HTMLInputElement | null>(null);
 
-  // ✅ Model options filtrate in base alla marca scelta
   const modelOptions = useMemo(() => {
     const list = CAR_MODELS_BY_BRAND_KEY[make] || [];
     return list.map((m) => ({ key: m, label: m }));
   }, [make]);
 
-  // ✅ Se cambia marca e il modello non appartiene più, lo resetto
   useEffect(() => {
     if (!make) {
       if (model) setModel('');
@@ -95,7 +93,6 @@ const [offerPrice3, setOfferPrice3] = useState<number | ''>('');
       setModel('');
     }
   }, [make]); // eslint-disable-line react-hooks/exhaustive-deps
-
 
   useEffect(() => {
     if (!id) return;
@@ -118,11 +115,11 @@ const [offerPrice3, setOfferPrice3] = useState<number | ''>('');
         setDescription(data.description || '');
         setLocationText(data.locationText || '');
         setCity(data.city || '');
+        setLatitude(typeof data.latitude === 'number' ? data.latitude : null);
+        setLongitude(typeof data.longitude === 'number' ? data.longitude : null);
 
-        // ⭐ FIX COVER: se non c'è cover, prendo la prima foto
         setCoverUrl(data.coverUrl || (data.photos?.[0] ?? ''));
         setPhotos(Array.isArray(data.photos) ? data.photos : []);
-        
 
         setColor(data.color || '');
         setTorqueNm((data.torqueNm ?? '') as any);
@@ -133,12 +130,10 @@ const [offerPrice3, setOfferPrice3] = useState<number | ''>('');
         setPriceEur((data.priceEur ?? '') as any);
         setEngine(data.engine || '');
         setTrimLevel(data.trimLevel || '');
-        // ⭐ PREZZI ACCETTATI
+
         setOfferPrice1(data.offerPrice1 ? data.offerPrice1 : '');
         setOfferPrice2(data.offerPrice2 ? data.offerPrice2 : '');
         setOfferPrice3(data.offerPrice3 ? data.offerPrice3 : '');
-
-
       } catch (e: any) {
         setErr(
           e?.response?.data?.error ||
@@ -151,6 +146,7 @@ const [offerPrice3, setOfferPrice3] = useState<number | ''>('');
     }
 
     run();
+
     return () => {
       mounted = false;
     };
@@ -166,7 +162,7 @@ const [offerPrice3, setOfferPrice3] = useState<number | ''>('');
     }
 
     setPhotos((prev) => [...prev, ...arr]);
-// ⭐ FIX: se non c’è cover, prima nuova foto diventa cover
+
     if (!coverUrl && arr[0]) setCoverUrl(arr[0]);
 
     if (inputRef.current) {
@@ -178,18 +174,19 @@ const [offerPrice3, setOfferPrice3] = useState<number | ''>('');
     const updated = photos.filter((_, idx) => idx !== i);
     setPhotos(updated);
 
-    // ⭐ FIX COVER: se rimuovi la cover, aggiorno
     if (i === 0) {
       setCoverUrl(updated[0] || '');
+    } else if (updated.length === 0) {
+      setCoverUrl('');
     }
   }
 
   async function onSave() {
     if (!id) return;
+
     setErr(null);
     setOk(null);
 
-    // ⭐ FIX: blocco salvataggio senza foto
     if (photos.length === 0) {
       setShowPopup(true);
       return;
@@ -207,14 +204,12 @@ const [offerPrice3, setOfferPrice3] = useState<number | ''>('');
       year: Number(year),
       horsepower: horsepower === '' ? undefined : Number(horsepower),
       mileageKm: mileageKm === '' ? undefined : Number(mileageKm),
-      coverUrl: coverUrl || photos[0] || null, // ⭐ FIX COVER SEMPRE SINCRONIZZATA
-      photos, // ⭐ FIX: sempre array aggiornato
-      //NUMBER
+      coverUrl: coverUrl || photos[0] || null,
+      photos,
       torqueNm: torqueNm === '' ? null : Number(torqueNm),
       seats: seats === '' ? null : Number(seats),
       doors: doors === '' ? null : Number(doors),
       priceEur: priceEur === '' ? null : Number(priceEur),
-      //STRING
       fuelType: fuelType === '' ? null : fuelType,
       description: description === '' ? null : description,
       drivetrain: drivetrain === '' ? null : drivetrain,
@@ -222,13 +217,13 @@ const [offerPrice3, setOfferPrice3] = useState<number | ''>('');
       engine: engine === '' ? null : engine,
       trimLevel: trimLevel === '' ? null : trimLevel,
       color: color === '' ? null : color,
-      // ⭐ NUOVI 3 PREZZI OBBLIGATORI
       offerPrice1: offerPrice1 === '' ? null : offerPrice1,
       offerPrice2: offerPrice2 === '' ? null : offerPrice2,
       offerPrice3: offerPrice3 === '' ? null : offerPrice3,
       locationText: locationText === '' ? null : locationText,
       city: city === '' ? null : city,
-
+      latitude,
+      longitude,
     };
 
     try {
@@ -264,8 +259,6 @@ const [offerPrice3, setOfferPrice3] = useState<number | ''>('');
 
   return (
     <div>
-
-            {/* ⭐ POPUP ASCARI */}
       {showPopup && (
         <AscariPopup
           message="Aggiungi almeno una foto per aggiornare il veicolo!"
@@ -273,12 +266,10 @@ const [offerPrice3, setOfferPrice3] = useState<number | ''>('');
         />
       )}
 
-      <button
-        className="btn secondary"
-        onClick={() => nav(-1)}
-      >
+      <button className="btn secondary" onClick={() => nav(-1)}>
         ← Indietro
       </button>
+
       <h1 className="h1" style={{ marginTop: 10 }}>
         Modifica veicolo
       </h1>
@@ -289,10 +280,7 @@ const [offerPrice3, setOfferPrice3] = useState<number | ''>('');
       <div className="grid" style={{ marginTop: 12 }}>
         <section className="card">
           <div className="card-body">
-            <div
-              className="row"
-              style={{ gap: 8, flexWrap: 'wrap' }}
-            >
+            <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
               <div style={{ width: '100%' }}>
                 <label className="muted">Marca</label>
                 <SelectableDropdown
@@ -302,7 +290,7 @@ const [offerPrice3, setOfferPrice3] = useState<number | ''>('');
                   onChange={setMake}
                 />
               </div>
-              {/* ✅ MODELLO A TENDINA (FILTRATA) */}
+
               <div style={{ width: '100%' }}>
                 <label className="muted">Modello</label>
                 <SelectableDropdown
@@ -312,26 +300,36 @@ const [offerPrice3, setOfferPrice3] = useState<number | ''>('');
                   onChange={setModel}
                 />
               </div>
+
               <input
                 className="input"
                 placeholder="Titolo annuncio"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
               />
+
               <input
                 className="input"
                 type="number"
                 placeholder="Anno"
                 value={year}
-                onChange={(e) =>
-                  setYear(parseInt(e.target.value || '0'))
-                }
+                onChange={(e) => setYear(parseInt(e.target.value || '0'))}
               />
-              <input
-                className="input"
-                placeholder="Indirizzo (es. Via Roma 10)"
+
+              <AddressAutocomplete
                 value={locationText}
-                onChange={(e) => setLocationText(e.target.value)}
+                onChange={(value) => {
+                  setLocationText(value);
+                  setLatitude(null);
+                  setLongitude(null);
+                }}
+                onSelect={({ locationText, city, latitude, longitude }) => {
+                  setLocationText(locationText);
+                  setCity(city || '');
+                  setLatitude(typeof latitude === 'number' ? latitude : null);
+                  setLongitude(typeof longitude === 'number' ? longitude : null);
+                }}
+                placeholder="Indirizzo (es. Via Roma 10)"
               />
 
               <input
@@ -343,47 +341,40 @@ const [offerPrice3, setOfferPrice3] = useState<number | ''>('');
 
               <div style={{ width: '100%', marginTop: 10 }}>
                 <label className="muted">Carburante</label>
-                  <SelectableDropdown
-                    label="Carburante"
-                    value={fuelType}
-                    options={FUEL_TYPES}
-                    onChange={setFuelType}
-                  />
+                <SelectableDropdown
+                  label="Carburante"
+                  value={fuelType}
+                  options={FUEL_TYPES}
+                  onChange={setFuelType}
+                />
               </div>
+
               <input
                 className="input"
                 type="number"
                 placeholder="Potenza (CV)"
                 value={horsepower}
                 onChange={(e) =>
-                  setHorsepower(
-                    e.target.value === ''
-                      ? ''
-                      : parseInt(e.target.value)
-                  )
+                  setHorsepower(e.target.value === '' ? '' : parseInt(e.target.value))
                 }
               />
+
               <input
                 className="input"
                 type="number"
                 placeholder="Chilometri"
                 value={mileageKm}
                 onChange={(e) =>
-                  setMileageKm(
-                    e.target.value === ''
-                      ? ''
-                      : parseInt(e.target.value)
-                  )
+                  setMileageKm(e.target.value === '' ? '' : parseInt(e.target.value))
                 }
               />
             </div>
+
             <textarea
               className="input"
               placeholder="Descrizione"
               value={description}
-              onChange={(e) =>
-                setDescription(e.target.value)
-              }
+              onChange={(e) => setDescription(e.target.value)}
               style={{
                 width: '100%',
                 height: 100,
@@ -410,20 +401,18 @@ const [offerPrice3, setOfferPrice3] = useState<number | ''>('');
                 type="file"
                 accept="image/*"
                 multiple
-                onChange={(e) =>
-                  onSelectFiles(e.target.files)
-                }
+                onChange={(e) => onSelectFiles(e.target.files)}
               />
+
               <input
                 className="input"
                 placeholder="Cover URL (facoltativo)"
                 value={coverUrl}
-                onChange={(e) =>
-                  setCoverUrl(e.target.value)
-                }
+                onChange={(e) => setCoverUrl(e.target.value)}
                 style={{ minWidth: 320 }}
               />
             </div>
+
             <div className="grid">
               {photos.map((src, i) => (
                 <div key={i} className="card">
@@ -454,43 +443,43 @@ const [offerPrice3, setOfferPrice3] = useState<number | ''>('');
         </section>
 
         <section className="card" style={{ minHeight: 260 }}>
-        <div className="card-body">
-          <h3>Prezzi accettati</h3>
-          <p className="muted">Inserisci i 3 prezzi che sei disposto ad accettare</p>
+          <div className="card-body">
+            <h3>Prezzi accettati</h3>
+            <p className="muted">
+              Inserisci i 3 prezzi che sei disposto ad accettare
+            </p>
 
-          <input
-            className="input"
-            type="number"
-            placeholder="Inserisci prezzo"
-            value={offerPrice1}
-            onChange={(e) =>
-              setOfferPrice1(e.target.value === '' ? '' : Number(e.target.value))
-            }
-          />
+            <input
+              className="input"
+              type="number"
+              placeholder="Inserisci prezzo"
+              value={offerPrice1}
+              onChange={(e) =>
+                setOfferPrice1(e.target.value === '' ? '' : Number(e.target.value))
+              }
+            />
 
-          <input
-            className="input"
-            type="number"
-            placeholder="Inserisci prezzo"
-            value={offerPrice2}
-            onChange={(e) =>
-              setOfferPrice2(e.target.value === '' ? '' : Number(e.target.value))
-            }
-          />
+            <input
+              className="input"
+              type="number"
+              placeholder="Inserisci prezzo"
+              value={offerPrice2}
+              onChange={(e) =>
+                setOfferPrice2(e.target.value === '' ? '' : Number(e.target.value))
+              }
+            />
 
-          <input
-            className="input"
-            type="number"
-            placeholder="Inserisci prezzo"
-            value={offerPrice3}
-            onChange={(e) =>
-              setOfferPrice3(e.target.value === '' ? '' : Number(e.target.value))
-            }
-          />
-
-        </div>
+            <input
+              className="input"
+              type="number"
+              placeholder="Inserisci prezzo"
+              value={offerPrice3}
+              onChange={(e) =>
+                setOfferPrice3(e.target.value === '' ? '' : Number(e.target.value))
+              }
+            />
+          </div>
         </section>
-
       </div>
 
       <AdditionalFields
@@ -507,19 +496,14 @@ const [offerPrice3, setOfferPrice3] = useState<number | ''>('');
         }}
         setData={(obj) => {
           if ('color' in obj) setColor(obj.color ?? '');
-          if ('torqueNm' in obj)
-            setTorqueNm(obj.torqueNm ?? '');
-          if ('drivetrain' in obj)
-            setDrivetrain(obj.drivetrain ?? '');
-          if ('transmission' in obj)
-            setTransmission(obj.transmission ?? '');
+          if ('torqueNm' in obj) setTorqueNm(obj.torqueNm ?? '');
+          if ('drivetrain' in obj) setDrivetrain(obj.drivetrain ?? '');
+          if ('transmission' in obj) setTransmission(obj.transmission ?? '');
           if ('seats' in obj) setSeats(obj.seats ?? '');
           if ('doors' in obj) setDoors(obj.doors ?? '');
-          if ('priceEur' in obj)
-            setPriceEur(obj.priceEur ?? '');
+          if ('priceEur' in obj) setPriceEur(obj.priceEur ?? '');
           if ('engine' in obj) setEngine(obj.engine ?? '');
-          if ('trimLevel' in obj)
-            setTrimLevel(obj.trimLevel ?? '');
+          if ('trimLevel' in obj) setTrimLevel(obj.trimLevel ?? '');
         }}
       />
 
