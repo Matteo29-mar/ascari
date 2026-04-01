@@ -6,6 +6,8 @@ update.txt
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+frontend/public/cars
+backend/uploads
 
 # Ignora file temporanei o di build
 dist/

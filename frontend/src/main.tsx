@@ -1,5 +1,5 @@
 // frontend/src/main.tsx
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { createRoot } from "react-dom/client";
 import {
   BrowserRouter,
@@ -8,6 +8,7 @@ import {
   Navigate,
   Link,
   useNavigate,
+  useLocation,
 } from "react-router-dom";
 import {
   ClerkProvider,
@@ -39,16 +40,21 @@ import { useRole } from "./hooks/useRole";
 import InspectorWorkshop from "./pages/InspectorWorkshop";
 import InspectorReport from "./pages/InspectorReport";
 import InspectorReportDetail from "./pages/InspectorReportDetail";
-
+import { getUnreadChatCount } from "./api";
 
 // ===============================
 // Menu dropdown "Sei altro?"
 // ===============================
-function SeiAltroMenu() {
+function SeiAltroMenu({
+  mobile = false,
+  onNavigate,
+}: {
+  mobile?: boolean;
+  onNavigate?: () => void;
+}) {
   const nav = useNavigate();
   const [open, setOpen] = useState(false);
 
-  // chiude menu se clicchi fuori
   useEffect(() => {
     function onDocClick(e: MouseEvent) {
       const target = e.target as HTMLElement;
@@ -59,41 +65,36 @@ function SeiAltroMenu() {
   }, []);
 
   return (
-    <div data-sei-altro style={{ position: "relative" }}>
+    <div
+      data-sei-altro
+      className={`sei-altro ${mobile ? "mobile" : ""}`}
+      style={{ position: "relative" }}
+    >
       <button
-        className="btn-link"
+        className={`btn-link ${mobile ? "nav-mobile-link" : ""}`}
         type="button"
         onClick={() => setOpen((v) => !v)}
-        style={{ display: "flex", gap: 8, alignItems: "center" }}
         aria-expanded={open}
       >
-        Sei altro?
+        <span>Sei altro?</span>
         <span aria-hidden style={{ opacity: 0.8 }}>
           ▾
         </span>
       </button>
 
       {open && (
-        <div
-          style={{
-            position: "absolute",
-            top: "calc(100% + 10px)",
-            right: 0,
-            minWidth: 200,
-            padding: 8,
-            borderRadius: 12,
-            boxShadow: "var(--shadow)",
-            background: "var(--panel-strong)",
-            border: "1px solid rgba(255,255,255,0.12)",
-            zIndex: 50,
-          }}
-        >
+        <div className={`sei-altro-dropdown ${mobile ? "mobile" : ""}`}>
           <button
-            className="btn-link"
+            className={`btn-link ${mobile ? "nav-mobile-link" : ""}`}
             type="button"
-            style={{ width: "100%", textAlign: "left", padding: "10px 10px" }}
+            style={{
+              width: "100%",
+              textAlign: "left",
+              padding: mobile ? "12px 14px" : "10px 10px",
+            }}
             onClick={() => {
               setOpen(false);
+              onNavigate?.();
               nav("/inspector/register");
             }}
           >
@@ -109,130 +110,276 @@ function SeiAltroMenu() {
 // Layout con navbar e contenuto
 // ===============================
 function Layout({ children }: { children: React.ReactNode }) {
-  const { isSignedIn } = useClerkAuth();
+  const { isSignedIn, getToken } = useClerkAuth();
   const { openSignIn } = useClerk();
   const nav = useNavigate();
+  const location = useLocation();
+
   const { pendingCount } = useOffers();
   const { theme, toggleTheme } = useTheme();
 
   const { role, isLoaded: roleLoaded } = useRole();
   const isInspector = role === "PERIZIATORE";
 
-  // evita flash di menu sbagliato
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [unreadChatCount, setUnreadChatCount] = useState(0);
+
+  const loadUnreadChatCount = useCallback(async () => {
+    if (!isSignedIn) {
+      setUnreadChatCount(0);
+      return;
+    }
+
+    try {
+      const token = await getToken();
+      if (!token) {
+        setUnreadChatCount(0);
+        return;
+      }
+
+      const count = await getUnreadChatCount(token);
+      setUnreadChatCount(Number.isFinite(count) ? count : 0);
+    } catch (e) {
+      console.error("Errore caricamento badge chat:", e);
+      setUnreadChatCount(0);
+    }
+  }, [getToken, isSignedIn]);
+
+  useEffect(() => {
+    setMobileMenuOpen(false);
+  }, [location.pathname]);
+
+  useEffect(() => {
+    function onResize() {
+      if (window.innerWidth > 900) {
+        setMobileMenuOpen(false);
+      }
+    }
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
+  useEffect(() => {
+    document.body.style.overflow = mobileMenuOpen ? "hidden" : "";
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [mobileMenuOpen]);
+
+  useEffect(() => {
+    if (!isSignedIn) {
+      setUnreadChatCount(0);
+      return;
+    }
+
+    loadUnreadChatCount();
+
+    const interval = window.setInterval(() => {
+      loadUnreadChatCount();
+    }, 5000);
+
+    return () => window.clearInterval(interval);
+  }, [isSignedIn, loadUnreadChatCount]);
+
+  useEffect(() => {
+    function onUnreadRefresh() {
+      loadUnreadChatCount();
+    }
+
+    window.addEventListener("ascari:refresh-chat-unread", onUnreadRefresh);
+    return () => {
+      window.removeEventListener("ascari:refresh-chat-unread", onUnreadRefresh);
+    };
+  }, [loadUnreadChatCount]);
+
   if (isSignedIn && !roleLoaded) return <div className="container">Loading…</div>;
+
+  const goToMyGarage = () => {
+    if (!isSignedIn) {
+      openSignIn();
+      return;
+    }
+    nav("/my-garage");
+  };
+
+  const closeMobileMenu = () => setMobileMenuOpen(false);
+
+  const renderStandardNav = (mobile = false) => (
+    <>
+      <button
+        className={mobile ? "nav-mobile-link" : "btn-link"}
+        onClick={() => {
+          if (mobile) closeMobileMenu();
+          nav("/explore");
+        }}
+        title="Esplora sulla mappa"
+      >
+        <span aria-hidden>🔍</span>
+        <span>Esplora</span>
+      </button>
+
+      <Link
+        to="/cars"
+        className={mobile ? "nav-mobile-link" : ""}
+        onClick={mobile ? closeMobileMenu : undefined}
+      >
+        Auto
+      </Link>
+
+      {isSignedIn && (
+        <Link
+          to="/offers"
+          className={mobile ? "nav-mobile-link nav-mobile-link-badge" : "nav-link-badge"}
+          onClick={mobile ? closeMobileMenu : undefined}
+        >
+          <span>Offerte</span>
+          {pendingCount > 0 && <span className="nav-pill">{pendingCount}</span>}
+        </Link>
+      )}
+
+      {isSignedIn && (
+        <Link
+          to="/chat"
+          className={mobile ? "nav-mobile-link nav-mobile-link-badge" : "nav-link-badge"}
+          onClick={mobile ? closeMobileMenu : undefined}
+        >
+          <span>Chat</span>
+          {unreadChatCount > 0 && <span className="nav-pill">{unreadChatCount}</span>}
+        </Link>
+      )}
+
+      <button
+        className={mobile ? "nav-mobile-link" : "btn-link"}
+        onClick={() => {
+          if (mobile) closeMobileMenu();
+          goToMyGarage();
+        }}
+      >
+        Il mio garage
+      </button>
+
+      {isSignedIn && (
+        <SeiAltroMenu mobile={mobile} onNavigate={mobile ? closeMobileMenu : undefined} />
+      )}
+    </>
+  );
+
+  const renderInspectorNav = (mobile = false) => (
+    <>
+      <button
+        className={mobile ? "nav-mobile-link" : "btn-link"}
+        onClick={() => {
+          if (mobile) closeMobileMenu();
+          nav("/inspector");
+        }}
+      >
+        Perizie ricevute
+      </button>
+
+      <button
+        className={mobile ? "nav-mobile-link" : "btn-link"}
+        onClick={() => {
+          if (mobile) closeMobileMenu();
+          nav("/inspector/workshop");
+        }}
+      >
+        Mia officina
+      </button>
+
+      <Link
+        to="/inspector/chat"
+        className={mobile ? "nav-mobile-link nav-mobile-link-badge" : "nav-link-badge"}
+        onClick={mobile ? closeMobileMenu : undefined}
+      >
+        <span>Chat</span>
+        {unreadChatCount > 0 && <span className="nav-pill">{unreadChatCount}</span>}
+      </Link>
+
+      <button
+        className={mobile ? "nav-mobile-link" : "btn-link"}
+        onClick={() => {
+          if (mobile) closeMobileMenu();
+          nav("/inspector/report");
+        }}
+      >
+        Resoconto
+      </button>
+    </>
+  );
 
   return (
     <>
       <nav className="nav">
         <div className="nav-inner container">
-          {/* LOGO (toggle light/dark) */}
-          <div
-            className="brand"
-            style={{ display: "flex", alignItems: "center", gap: 8 }}
-          >
-            <img
-              src={
-                theme === "dark" ? "/logos/logocut.png" : "/logos/logocut-dark.png"
-              }
-              alt="Ascari Logo"
-              onClick={toggleTheme}
-              style={{
-                width: 32,
-                height: 32,
-                borderRadius: 6,
-                objectFit: "cover",
-                cursor: "pointer",
-              }}
-            />
-            <span>ASCARI</span>
+          <div className="nav-left">
+            <Link to={isInspector ? "/inspector" : "/cars"} className="brand brand-link">
+              <img
+                src={
+                  theme === "dark" ? "/logos/logocut.png" : "/logos/logocut-dark.png"
+                }
+                alt="Ascari Logo"
+                onClick={(e) => {
+                  e.preventDefault();
+                  toggleTheme();
+                }}
+                style={{
+                  width: 32,
+                  height: 32,
+                  borderRadius: 6,
+                  objectFit: "cover",
+                  cursor: "pointer",
+                }}
+              />
+              <span>ASCARI</span>
+            </Link>
           </div>
 
-          {/* NAV ITEMS */}
-          <div className="row" style={{ gap: 16, alignItems: "center" }}>
-            {!isInspector ? (
-              <>
-                <button
-                  className="btn-link"
-                  onClick={() => nav("/explore")}
-                  style={{ display: "flex", gap: 8, alignItems: "center" }}
-                  title="Esplora sulla mappa"
-                >
-                  <span aria-hidden>🔍</span>
-                  Esplora
-                </button>
+          <div className="nav-desktop">
+            <div className="nav-links">
+              {!isInspector ? renderStandardNav(false) : renderInspectorNav(false)}
+            </div>
 
-                <Link to="/cars">Auto</Link>
+            <div className="nav-auth">
+              <AuthButtons />
+            </div>
+          </div>
 
-                {isSignedIn && (
-                  <Link to="/offers" style={{ position: "relative" }}>
-                    Offerte
-                    {pendingCount > 0 && (
-                      <span
-                        style={{
-                          background: "var(--primary)",
-                          color: "#000",
-                          padding: "2px 6px",
-                          borderRadius: "10px",
-                          fontSize: "12px",
-                          position: "absolute",
-                          top: -6,
-                          right: -14,
-                          fontWeight: 600,
-                        }}
-                      >
-                        {pendingCount}
-                      </span>
-                    )}
-                  </Link>
-                )}
+          <div className="nav-mobile-actions">
+            <div className="nav-mobile-auth">
+              <AuthButtons />
+            </div>
 
-                {isSignedIn && <Link to="/chat">Chat</Link>}
-
-                <button
-                  className="btn-link"
-                  onClick={() => {
-                    if (!isSignedIn) {
-                      openSignIn();
-                      return;
-                    }
-                    nav("/my-garage");
-                  }}
-                >
-                  Il mio garage
-                </button>
-
-                {/* ✅ SEI ALTRO? */}
-                {isSignedIn && <SeiAltroMenu />}
-              </>
-            ) : (
-              <>
-                <button className="btn-link" onClick={() => nav("/inspector")}>
-                  Perizie ricevute
-                </button>
-                <button
-                  className="btn-link"
-                  onClick={() => nav("/inspector/workshop")}
-                >
-                  Mia officina
-                </button>
-                <button className="btn-link" onClick={() => nav("/inspector/chat")}>
-                  Chat
-                </button>
-                <button
-                  className="btn-link"
-                  onClick={() => nav("/inspector/report")}
-                >
-                  Resoconto
-                </button>
-              </>
-            )}
-
-            <AuthButtons />
+            <button
+              type="button"
+              className="hamburger-btn"
+              aria-label={mobileMenuOpen ? "Chiudi menu" : "Apri menu"}
+              aria-expanded={mobileMenuOpen}
+              onClick={() => setMobileMenuOpen((v) => !v)}
+            >
+              <span />
+              <span />
+              <span />
+            </button>
           </div>
         </div>
+
+        {mobileMenuOpen && (
+          <>
+            <div className="nav-mobile-overlay" onClick={closeMobileMenu} />
+            <div className="nav-mobile-panel">
+              <div className="nav-mobile-panel-inner">
+                {!isInspector ? renderStandardNav(true) : renderInspectorNav(true)}
+
+                <div className="nav-mobile-auth-block">
+                  <AuthButtons />
+                </div>
+              </div>
+            </div>
+          </>
+        )}
       </nav>
 
-      <div className="container">{children}</div>
+      <div className="container page-container">{children}</div>
     </>
   );
 }
@@ -278,13 +425,48 @@ function AppRoutes() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/" element={<Layout><HomeRedirect /></Layout>} />
+        <Route
+          path="/"
+          element={
+            <Layout>
+              <HomeRedirect />
+            </Layout>
+          }
+        />
 
-        <Route path="/login" element={<Layout><Login /></Layout>} />
-        <Route path="/register" element={<Layout><Register /></Layout>} />
+        <Route
+          path="/login"
+          element={
+            <Layout>
+              <Login />
+            </Layout>
+          }
+        />
+        <Route
+          path="/register"
+          element={
+            <Layout>
+              <Register />
+            </Layout>
+          }
+        />
 
-        <Route path="/cars" element={<Layout><Cars /></Layout>} />
-        <Route path="/cars/:id" element={<Layout><CarDetail /></Layout>} />
+        <Route
+          path="/cars"
+          element={
+            <Layout>
+              <Cars />
+            </Layout>
+          }
+        />
+        <Route
+          path="/cars/:id"
+          element={
+            <Layout>
+              <CarDetail />
+            </Layout>
+          }
+        />
 
         <Route
           path="/cars/new"
@@ -361,7 +543,6 @@ function AppRoutes() {
           }
         />
 
-        {/* ✅ PERIZIATORE */}
         <Route
           path="/inspector/register"
           element={
@@ -384,16 +565,16 @@ function AppRoutes() {
           }
         />
         <Route
-        path="/inspector/workshop"
-        element={
-          <Layout>
-            <RequireAuth>
-              <InspectorWorkshop />
-            </RequireAuth>
-          </Layout>
-        }
-      />
-              {/* ✅ CHAT PERIZIATORE (usa le stesse pagine del venditore) */}
+          path="/inspector/workshop"
+          element={
+            <Layout>
+              <RequireAuth>
+                <InspectorWorkshop />
+              </RequireAuth>
+            </Layout>
+          }
+        />
+
         <Route
           path="/inspector/chat"
           element={

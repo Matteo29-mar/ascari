@@ -1,3 +1,4 @@
+// frontend/src/pages/Chat.tsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { http } from "../api";
@@ -10,8 +11,75 @@ type Message = {
   createdAt: string;
 };
 
+function renderMessageContent(content: string) {
+  const lines = content.split("\n");
+
+  return lines.map((line, index) => {
+    const trimmed = line.trim();
+
+    const mapsMatch = trimmed.match(/^Google Maps:\s*(https?:\/\/\S+)$/i);
+    if (mapsMatch) {
+      const url = mapsMatch[1];
+
+      return (
+        <div key={index} style={{ marginTop: index === 0 ? 0 : 4 }}>
+          <a
+            href={url}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              color: "#7dd3fc",
+              fontWeight: 600,
+              textDecoration: "underline",
+            }}
+          >
+            Apri su Google Maps
+          </a>
+        </div>
+      );
+    }
+
+    const urlRegex = /(https?:\/\/[^\s]+)/g;
+    const parts = line.split(urlRegex);
+
+    return (
+      <div
+        key={index}
+        style={{
+          marginTop: index === 0 ? 0 : 4,
+          minHeight: 22,
+        }}
+      >
+        {parts.map((part, partIndex) => {
+          const isUrl = /^https?:\/\/[^\s]+$/i.test(part);
+
+          if (isUrl) {
+            return (
+              <a
+                key={partIndex}
+                href={part}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  color: "#7dd3fc",
+                  textDecoration: "underline",
+                  wordBreak: "break-all",
+                }}
+              >
+                {part}
+              </a>
+            );
+          }
+
+          return <span key={partIndex}>{part}</span>;
+        })}
+      </div>
+    );
+  });
+}
+
 export default function ChatPage() {
-  const { id } = useParams(); // chatId (string)
+  const { id } = useParams();
   const navigate = useNavigate();
   const { getToken } = useAuth();
 
@@ -25,9 +93,11 @@ export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [chatInfo, setChatInfo] = useState<any>(null);
   const [input, setInput] = useState("");
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const [sending, setSending] = useState(false);
 
-  // ✅ popup eliminazione (solo venditore, solo per perizia cancellata)
+  const bottomRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
   const [deletePromptOpen, setDeletePromptOpen] = useState(false);
   const [deletePromptText, setDeletePromptText] = useState(
     "La perizia è stata annullata. Vuoi eliminare la chat?"
@@ -47,10 +117,22 @@ export default function ChatPage() {
     return `chat_cancelled_popup_shown_${cid}`;
   }
 
+  function refreshUnreadBadge() {
+    window.dispatchEvent(new Event("ascari:refresh-chat-unread"));
+  }
+
   async function authHeaders() {
     const token = await getToken();
     if (!token) throw new Error("Token mancante");
     return { Authorization: `Bearer ${token}` };
+  }
+
+  function resizeTextarea() {
+    const el = textareaRef.current;
+    if (!el) return;
+
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 180)}px`;
   }
 
   async function loadChat() {
@@ -63,9 +145,12 @@ export default function ChatPage() {
       setChatInfo(data);
       setMessages(data.messages || []);
 
-      setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
+      setTimeout(() => {
+        bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+      }, 50);
 
-      // ✅ popup: perizia cancellata visibile al venditore
+      refreshUnreadBadge();
+
       const myId = data?.meId as string | undefined;
       const kind = data?.kind as string | undefined;
       const inspectionStatus = data?.inspectionStatus as string | null | undefined;
@@ -89,7 +174,8 @@ export default function ChatPage() {
       }
     } catch (e: any) {
       const status = e?.response?.status;
-      const msg = e?.response?.data?.error ?? e?.message ?? "Errore caricamento chat";
+      const msg =
+        e?.response?.data?.error ?? e?.message ?? "Errore caricamento chat";
       alert(msg);
 
       if (status === 403 || status === 404 || status === 400) {
@@ -98,17 +184,14 @@ export default function ChatPage() {
     }
   }
 
-  // ✅ se chatId invalido: niente chiamate e torna alla lista
   useEffect(() => {
     if (!chatId) {
-      // evita loop: se sei già in /chat
       goBack();
       return;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chatId]);
 
-  // 🔄 Polling ogni 3 sec SOLO se chatId valido
   useEffect(() => {
     if (!chatId) return;
 
@@ -118,17 +201,39 @@ export default function ChatPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chatId]);
 
+  useEffect(() => {
+    resizeTextarea();
+  }, [input]);
+
   async function sendMessage() {
     if (!chatId) return;
     if (!input.trim()) return;
+    if (sending) return;
 
     try {
+      setSending(true);
       const headers = await authHeaders();
-      await http.post(`/chat/${chatId}/message`, { content: input }, { headers });
+
+      await http.post(
+        `/chat/${chatId}/message`,
+        { content: input },
+        { headers }
+      );
+
       setInput("");
-      loadChat();
+
+      setTimeout(() => {
+        if (textareaRef.current) {
+          textareaRef.current.style.height = "auto";
+        }
+      }, 0);
+
+      await loadChat();
+      refreshUnreadBadge();
     } catch (e: any) {
       alert(e?.response?.data?.error ?? e?.message ?? "Errore invio messaggio");
+    } finally {
+      setSending(false);
     }
   }
 
@@ -140,6 +245,7 @@ export default function ChatPage() {
       const headers = await authHeaders();
       await http.delete(`/chat/${chatId}`, { headers });
       setDeletePromptOpen(false);
+      refreshUnreadBadge();
       goBack();
     } catch (e: any) {
       alert(e?.response?.data?.error ?? e?.message ?? "Errore eliminazione chat");
@@ -152,8 +258,6 @@ export default function ChatPage() {
   if (!chatInfo) return <p style={{ padding: 20 }}>Caricamento chat…</p>;
 
   const myId = chatInfo.meId as string;
-
-  // ✅ usa buyer/seller direttamente
   const otherUser = chatInfo.peer;
 
   const displayName =
@@ -179,6 +283,7 @@ export default function ChatPage() {
           overflowY: "auto",
           borderRadius: 10,
           marginTop: 20,
+          border: "1px solid rgba(255,255,255,0.06)",
         }}
       >
         {messages.map((m) => (
@@ -197,31 +302,58 @@ export default function ChatPage() {
                 padding: "10px 14px",
                 borderRadius: 12,
                 maxWidth: "60%",
-                whiteSpace: "pre-wrap",
+                whiteSpace: "normal",
+                lineHeight: 1.45,
+                wordBreak: "break-word",
               }}
             >
-              {m.content}
+              {renderMessageContent(m.content)}
             </div>
           </div>
         ))}
         <div ref={bottomRef} />
       </div>
 
-      <div className="row" style={{ marginTop: 20, gap: 10 }}>
-        <input
-          className="input"
-          placeholder="Scrivi un messaggio…"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && sendMessage()}
-          style={{ flex: 1 }}
-        />
-        <button className="btn" onClick={sendMessage}>
-          Invia
+      <div
+        style={{
+          marginTop: 20,
+          display: "flex",
+          alignItems: "flex-end",
+          gap: 10,
+        }}
+      >
+        <div style={{ flex: 1 }}>
+          <textarea
+            ref={textareaRef}
+            className="input"
+            placeholder="Scrivi un messaggio…"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            rows={1}
+            style={{
+              width: "100%",
+              minHeight: 52,
+              maxHeight: 180,
+              resize: "none",
+              overflowY: "auto",
+              paddingTop: 14,
+              paddingBottom: 14,
+              lineHeight: 1.45,
+              borderRadius: 14,
+            }}
+          />
+        </div>
+
+        <button
+          className="btn"
+          onClick={sendMessage}
+          disabled={!input.trim() || sending}
+          style={{ minWidth: 92, height: 52 }}
+        >
+          {sending ? "Invio..." : "Invia"}
         </button>
       </div>
 
-      {/* ✅ MODAL eliminazione chat (venditore) */}
       {deletePromptOpen && (
         <div className="ascari-modal" onClick={() => setDeletePromptOpen(false)}>
           <div className="ascari-modal-box" onClick={(e) => e.stopPropagation()}>

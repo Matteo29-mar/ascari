@@ -1,7 +1,8 @@
+// frontend/src/pages/ChatList.tsx
 import React, { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@clerk/clerk-react";
 import { http } from "../api";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 
 type CarMini = {
   id?: number;
@@ -18,7 +19,7 @@ type MsgPreview = {
 };
 
 type ChatRow = {
-  id: number | string; // a volte arriva string, lo normalizziamo
+  id: number | string;
   kind?: "OFFER" | "INSPECTION" | "GENERIC" | string;
   car?: CarMini | null;
   peer?: { id: string; name?: string | null; email?: string | null } | null;
@@ -31,23 +32,24 @@ function safeArray<T>(v: any): T[] {
 }
 
 function normalizeChats(payload: any): ChatRow[] {
-  // backend: { ok:true, chats:[...] }
   if (payload && Array.isArray(payload.chats)) return payload.chats as ChatRow[];
-
-  // fallback vecchi formati
   if (Array.isArray(payload)) return payload as ChatRow[];
   if (payload && Array.isArray(payload.data)) return payload.data as ChatRow[];
   if (payload && Array.isArray(payload.items)) return payload.items as ChatRow[];
   if (payload && Array.isArray(payload.result)) return payload.result as ChatRow[];
-
   return [];
 }
 
 export default function ChatList() {
   const { getToken } = useAuth();
+  const location = useLocation();
+
   const [chats, setChats] = useState<ChatRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
+
+  const isInspectorRoute = location.pathname.startsWith("/inspector/chat");
+  const chatBasePath = isInspectorRoute ? "/inspector/chat" : "/chat";
 
   async function loadList() {
     setLoading(true);
@@ -67,7 +69,6 @@ export default function ChatList() {
 
       const list = normalizeChats(res.data);
 
-      // ✅ filtro hard: niente chat senza id valido
       const cleaned = list
         .map((c) => ({
           ...c,
@@ -119,12 +120,11 @@ export default function ChatList() {
           `${car?.make ?? ""} ${car?.model ?? ""}`.trim() ||
           "Auto";
 
-        // ✅ link SOLO se id valido (già filtrato sopra, ma doppia sicurezza)
         const chatId = Number(c.id);
         if (!Number.isFinite(chatId) || chatId <= 0) return null;
 
         return (
-          <Link to={`/chat/${chatId}`} key={chatId} className="chat-row">
+          <Link to={`${chatBasePath}/${chatId}`} key={chatId} className="chat-row">
             <img src={cover} alt="" className="chat-avatar" />
 
             <div className="chat-info">

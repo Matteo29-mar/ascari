@@ -477,12 +477,6 @@ export default function Cars() {
           );
         })}
       </div>
-
-      <p className="muted" style={{ marginTop: 18 }}>
-        Suggerimento: aggiungi immagini in <code>/public/cars</code> (es.{" "}
-        <code>ascari-gt-1.jpg</code>, <code>ascari-gt-2.jpg</code>, …). Se mancano,
-        verrà mostrato <code>placeholder.jpg</code>.
-      </p>
     </div>
   );
 }
