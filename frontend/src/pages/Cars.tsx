@@ -23,55 +23,96 @@ type Car = {
   owner?: { clerkId: string };
 };
 
-// ✅ helper: qualunque forma ritorni il backend, estraiamo un array
-function normalizeCars(payload: any): Car[] {
-  if (Array.isArray(payload)) return payload;
+type PaginatedCarsResponse = {
+  items: Car[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+};
 
-  // casi comuni: { cars: [...] } / { items: [...] } / { data: [...] }
-  if (payload && Array.isArray(payload.cars)) return payload.cars;
-  if (payload && Array.isArray(payload.items)) return payload.items;
-  if (payload && Array.isArray(payload.data)) return payload.data;
+type SearchFilters = {
+  brands: string[];
+  models: string[];
+};
 
-  return [];
+type ViewMode = "all" | "search" | "filter" | "nearby";
+
+function normalizeCarsResponse(payload: any): PaginatedCarsResponse {
+  if (Array.isArray(payload)) {
+    return {
+      items: payload,
+      total: payload.length,
+      page: 1,
+      pageSize: payload.length || 6,
+      totalPages: 1,
+    };
+  }
+
+  if (payload && Array.isArray(payload.items)) {
+    return {
+      items: payload.items,
+      total: Number(payload.total ?? payload.items.length ?? 0),
+      page: Number(payload.page ?? 1),
+      pageSize: Number(payload.pageSize ?? 6),
+      totalPages: Number(payload.totalPages ?? 1),
+    };
+  }
+
+  if (payload && Array.isArray(payload.cars)) {
+    return {
+      items: payload.cars,
+      total: Number(payload.total ?? payload.cars.length ?? 0),
+      page: Number(payload.page ?? 1),
+      pageSize: Number(payload.pageSize ?? 6),
+      totalPages: Number(payload.totalPages ?? 1),
+    };
+  }
+
+  if (payload && Array.isArray(payload.data)) {
+    return {
+      items: payload.data,
+      total: Number(payload.total ?? payload.data.length ?? 0),
+      page: Number(payload.page ?? 1),
+      pageSize: Number(payload.pageSize ?? 6),
+      totalPages: Number(payload.totalPages ?? 1),
+    };
+  }
+
+  return {
+    items: [],
+    total: 0,
+    page: 1,
+    pageSize: 6,
+    totalPages: 1,
+  };
 }
 
-// ✅ cast numerico safe (evita NaN)
 function toNum(v: any): number | undefined {
   if (v === null || v === undefined || v === "") return undefined;
   const n = Number(v);
   return Number.isFinite(n) ? n : undefined;
 }
 
-// ✅ rimuove chiavi undefined (Prisma/validator spesso le odia)
 function stripUndefined<T extends Record<string, any>>(obj: T): T {
   Object.keys(obj).forEach((k) => obj[k] === undefined && delete obj[k]);
   return obj;
 }
 
-// ✅ costruisce payload bozza -> API
 function draftToPayload(d: DraftCar) {
   const payload: any = {
     make: d.make,
     model: d.model,
-    // molti backend richiedono title: se non esiste nella bozza lo generiamo
     title: (d as any).title ?? `${d.make} ${d.model}`,
-
     year: toNum((d as any).year),
     fuelType: (d as any).fuelType ?? undefined,
     horsepower: toNum((d as any).horsepower),
     mileageKm: toNum((d as any).mileageKm),
-
     photos: (d as any).photos ?? undefined,
     coverUrl: (d as any).coverUrl ?? undefined,
     description: (d as any).description ?? undefined,
-
     latitude: toNum((d as any).latitude),
     longitude: toNum((d as any).longitude),
-
-    // se in futuro aggiungi campi obbligatori lato backend, aggiungili qui:
-    // offerPrice1: toNum((d as any).offerPrice1),
-    // offerPrice2: toNum((d as any).offerPrice2),
-    // offerPrice3: toNum((d as any).offerPrice3),
   };
 
   return stripUndefined(payload);
@@ -87,39 +128,188 @@ export default function Cars() {
   const nav = useNavigate();
   const [drafts, setDrafts] = useState<DraftCar[]>([]);
 
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<6 | 9 | 12>(6);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+
+  const [viewMode, setViewMode] = useState<ViewMode>("all");
+  const [activeFilters, setActiveFilters] = useState<SearchFilters>({ brands: [], models: [] });
+
   const { userId: clerkUserId, isSignedIn, isLoaded, getToken } = useAuth();
   const { openSignIn } = useClerk();
 
-  async function loadAll() {
+  async function getAuthHeaders() {
+    const token = await getToken();
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  }
+
+  function applyCarsResponse(payload: any) {
+    const normalized = normalizeCarsResponse(payload);
+    setList(normalized.items);
+    setTotal(normalized.total);
+    setPage(normalized.page);
+    setTotalPages(normalized.totalPages);
+  }
+
+  async function loadAll(nextPage = page, nextPageSize = pageSize) {
     setErr(null);
     setLoading(true);
+
     try {
-      const token = await getToken();
+      const headers = await getAuthHeaders();
       const res = await http.get("/cars", {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        params: { page: nextPage, pageSize: nextPageSize },
+        headers,
       });
 
-      const cars = normalizeCars(res.data);
-      setList(cars);
+      applyCarsResponse(res.data);
+      setViewMode("all");
     } catch (e: any) {
       console.error("Errore loadAll", e);
       console.error("Backend response:", e?.response?.data);
       setErr(e?.response?.data?.error || e?.message || "Errore caricamento auto");
-      setList([]); // ✅ evita crash UI
+      setList([]);
+      setTotal(0);
+      setTotalPages(1);
     } finally {
       setLoading(false);
     }
   }
 
-  // 1) carica lista auto e bozze
+  async function runSearch(nextPage = page, nextPageSize = pageSize, nextQuery = q) {
+    setErr(null);
+    setLoading(true);
+
+    try {
+      if (!nextQuery.trim()) {
+        await loadAll(nextPage, nextPageSize);
+        return;
+      }
+
+      const headers = await getAuthHeaders();
+      const res = await http.get("/cars/search", {
+        params: {
+          query: nextQuery,
+          page: nextPage,
+          pageSize: nextPageSize,
+        },
+        headers,
+      });
+
+      applyCarsResponse(res.data);
+      setViewMode("search");
+    } catch (e: any) {
+      console.error("Errore search", e);
+      console.error("Backend response:", e?.response?.data);
+      setErr(e?.response?.data?.error || e?.message || "Errore ricerca");
+      setList([]);
+      setTotal(0);
+      setTotalPages(1);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function runAdvancedSearch(
+    filters: SearchFilters,
+    nextPage = page,
+    nextPageSize = pageSize
+  ) {
+    setLoading(true);
+    setErr(null);
+
+    try {
+      const headers = await getAuthHeaders();
+
+      const res = await http.get("/cars/filter", {
+        params: {
+          brands: filters.brands.join(","),
+          models: filters.models.join(","),
+          page: nextPage,
+          pageSize: nextPageSize,
+        },
+        headers,
+      });
+
+      applyCarsResponse(res.data);
+      setActiveFilters(filters);
+      setViewMode("filter");
+    } catch (e: any) {
+      console.error("Errore searchAdvanced", e);
+      console.error("Backend response:", e?.response?.data);
+      setErr(e?.response?.data?.error || e?.message || "Errore filtri");
+      setList([]);
+      setTotal(0);
+      setTotalPages(1);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function runNearby(nextPage = page, nextPageSize = pageSize, nextPos = pos, nextRadius = radius) {
+    setErr(null);
+
+    if (!nextPos) {
+      setErr("Posizione non disponibile");
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const headers = await getAuthHeaders();
+      const res = await http.get("/cars/nearby", {
+        params: {
+          lat: nextPos.lat,
+          lon: nextPos.lon,
+          radius: nextRadius,
+          page: nextPage,
+          pageSize: nextPageSize,
+        },
+        headers,
+      });
+
+      applyCarsResponse(res.data);
+      setViewMode("nearby");
+    } catch (e: any) {
+      console.error("Errore nearby", e);
+      console.error("Backend response:", e?.response?.data);
+      setErr(e?.response?.data?.error || e?.message || "Errore geolocalizzazione");
+      setList([]);
+      setTotal(0);
+      setTotalPages(1);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function reloadCurrentView(nextPage = page, nextPageSize = pageSize) {
+    if (viewMode === "search") {
+      await runSearch(nextPage, nextPageSize, q);
+      return;
+    }
+
+    if (viewMode === "filter") {
+      await runAdvancedSearch(activeFilters, nextPage, nextPageSize);
+      return;
+    }
+
+    if (viewMode === "nearby") {
+      await runNearby(nextPage, nextPageSize, pos, radius);
+      return;
+    }
+
+    await loadAll(nextPage, nextPageSize);
+  }
+
   useEffect(() => {
     if (!isLoaded) return;
-    loadAll();
+    loadAll(1, pageSize);
     setDrafts(loadDrafts());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoaded]);
 
-  // 2) sincronizza bozze nel DB quando utente è pronto E loggato
   useEffect(() => {
     if (!isLoaded || !isSignedIn) return;
 
@@ -133,7 +323,6 @@ export default function Cars() {
         const token = await getToken();
         if (!token) return;
 
-        // tenta sync di tutte le bozze: se una fallisce non blocca le altre
         const failed: { id: string; reason: any }[] = [];
 
         for (const d of local) {
@@ -152,11 +341,9 @@ export default function Cars() {
           }
         }
 
-        // aggiorna lista bozze rimaste + reload DB
         setDrafts(loadDrafts());
-        await loadAll();
+        await reloadCurrentView(1, pageSize);
 
-        // opzionale: mostra un errore soft se qualcosa non è andato
         if (failed.length) {
           setErr(
             `Alcune bozze non sono state sincronizzate (${failed.length}). Aprile e correggi i campi obbligatori.`
@@ -170,93 +357,67 @@ export default function Cars() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoaded, isSignedIn]);
 
-  async function search() {
-    setErr(null);
-    setLoading(true);
-
-    try {
-      if (!q.trim()) {
-        await loadAll();
-        return;
-      }
-
-      const token = await getToken();
-      const res = await http.get("/cars/search", {
-        params: { query: q },
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-
-      setList(normalizeCars(res.data));
-    } catch (e: any) {
-      console.error("Errore search", e);
-      console.error("Backend response:", e?.response?.data);
-      setErr(e?.response?.data?.error || e?.message || "Errore ricerca");
-      setList([]);
-    } finally {
-      setLoading(false);
-    }
+  async function onSearchClick() {
+    setPos(null);
+    setPage(1);
+    await runSearch(1, pageSize, q);
   }
 
-  async function searchAdvanced(filters: { brands: string[]; models: string[] }) {
-    setLoading(true);
-    setErr(null);
-
-    try {
-      const token = await getToken();
-
-      const res = await http.get("/cars/filter", {
-        params: {
-          brands: filters.brands.join(","),
-          models: filters.models.join(","),
-        },
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-
-      setList(normalizeCars(res.data));
-    } catch (e: any) {
-      console.error("Errore searchAdvanced", e);
-      console.error("Backend response:", e?.response?.data);
-      setErr(e?.response?.data?.error || e?.message || "Errore filtri");
-      setList([]);
-    } finally {
-      setLoading(false);
-    }
+  async function onAdvancedSearch(filters: SearchFilters) {
+    setPos(null);
+    setQ("");
+    setPage(1);
+    await runAdvancedSearch(filters, 1, pageSize);
   }
 
   async function nearby() {
     setErr(null);
+
     if (!navigator.geolocation) {
       setErr("Geolocalizzazione non supportata");
       return;
     }
 
     setLoading(true);
+
     navigator.geolocation.getCurrentPosition(
       async (p) => {
-        try {
-          const lat = p.coords.latitude;
-          const lon = p.coords.longitude;
-          setPos({ lat, lon });
+        const nextPos = {
+          lat: p.coords.latitude,
+          lon: p.coords.longitude,
+        };
 
-          const res = await http.get("/cars/nearby", {
-            params: { lat, lon, radiusKm: radius },
-          });
+        setPos(nextPos);
+        setPage(1);
 
-          setList(normalizeCars(res.data));
-        } catch (e: any) {
-          console.error("Errore nearby", e);
-          console.error("Backend response:", e?.response?.data);
-          setErr(e?.response?.data?.error || e?.message || "Errore geolocalizzazione");
-          setList([]);
-        } finally {
-          setLoading(false);
-        }
+        await runNearby(1, pageSize, nextPos, radius);
       },
       (e) => {
         setErr(e.message);
         setLoading(false);
       }
     );
+  }
+
+  async function resetAll() {
+    setQ("");
+    setPos(null);
+    setActiveFilters({ brands: [], models: [] });
+    setViewMode("all");
+    setPage(1);
+    await loadAll(1, pageSize);
+  }
+
+  async function changePage(nextPage: number) {
+    if (nextPage < 1 || nextPage > totalPages || nextPage === page) return;
+    setPage(nextPage);
+    await reloadCurrentView(nextPage, pageSize);
+  }
+
+  async function changePageSize(nextSize: 6 | 9 | 12) {
+    setPageSize(nextSize);
+    setPage(1);
+    await reloadCurrentView(1, nextSize);
   }
 
   function goToNew() {
@@ -268,10 +429,11 @@ export default function Cars() {
   }
 
   const resultsTitle = useMemo(() => {
-    if (q.trim()) return `Risultati per “${q}”`;
-    if (pos) return `A ${radius} km dalla tua posizione`;
+    if (q.trim() && viewMode === "search") return `Risultati per “${q}”`;
+    if (pos && viewMode === "nearby") return `A ${radius} km dalla tua posizione`;
+    if (viewMode === "filter") return "Risultati filtrati";
     return "Tutti i modelli";
-  }, [q, pos, radius]);
+  }, [q, pos, radius, viewMode]);
 
   function slug(car: Car) {
     return `${car.make}-${car.model}`.toLowerCase().replace(/\s+/g, "-");
@@ -295,6 +457,18 @@ export default function Cars() {
     return dedup.length ? dedup : ["/cars/placeholder.jpg"];
   }
 
+  const pageNumbers = useMemo(() => {
+    const pages: number[] = [];
+    const start = Math.max(1, page - 2);
+    const end = Math.min(totalPages, page + 2);
+
+    for (let i = start; i <= end; i += 1) {
+      pages.push(i);
+    }
+
+    return pages;
+  }, [page, totalPages]);
+
   return (
     <div>
       <h1 className="h1">Auto disponibili</h1>
@@ -302,11 +476,11 @@ export default function Cars() {
 
       <SearchBar
         onSearch={(filters) => {
-          searchAdvanced(filters);
+          onAdvancedSearch(filters);
         }}
       />
 
-      <div className="toolbar">
+      <div className="toolbar" style={{ gap: 10, flexWrap: "wrap", alignItems: "center" }}>
         <input
           className="input"
           placeholder="Cerca per marca o modello (es. Ascari GT)"
@@ -315,27 +489,20 @@ export default function Cars() {
           style={{ minWidth: 280 }}
         />
 
-        <button className="btn" onClick={search} disabled={loading}>
+        <button className="btn" onClick={onSearchClick} disabled={loading}>
           Cerca
         </button>
 
-        <button
-          className="btn ghost"
-          onClick={() => {
-            setQ("");
-            setPos(null);
-            loadAll();
-          }}
-          style={{ marginLeft: 8 }}
-        >
+        <button className="btn ghost" onClick={resetAll}>
           Reset
         </button>
 
-        <span style={{ width: 16 }} />
+        <span style={{ width: 8 }} />
 
         <label className="muted" htmlFor="radius">
           Raggio
         </label>
+
         <input
           id="radius"
           className="input"
@@ -346,32 +513,57 @@ export default function Cars() {
           onChange={(e) => setRadius(parseInt(e.target.value || "5", 10))}
           style={{ width: 90 }}
         />
+
         <span className="tag">km</span>
 
         <button className="btn secondary" onClick={nearby} disabled={loading}>
           Vicino a me
         </button>
 
-        {pos && (
-          <small className="muted">
-            (lat: {pos.lat.toFixed(4)}, lon: {pos.lon.toFixed(4)})
-          </small>
-        )}
+        <div className="cars-toolbar-spacer" />
 
-        <div style={{ flex: 1 }} />
+        <div className="cars-page-size-wrap">
+          <label className="cars-page-size-label" htmlFor="pageSize">
+            Visualizzazione
+          </label>
+
+          <select
+            id="pageSize"
+            className="input cars-page-size-select"
+            value={pageSize}
+            onChange={(e) => changePageSize(Number(e.target.value) as 6 | 9 | 12)}
+          >
+            <option value={6}>6 / pagina</option>
+            <option value={9}>9 / pagina</option>
+            <option value={12}>12 / pagina</option>
+          </select>
+        </div>
 
         <button className="btn" onClick={goToNew}>
           + Nuovo
         </button>
       </div>
 
+      {pos && viewMode === "nearby" && (
+        <small className="muted" style={{ display: "block", marginTop: 8 }}>
+          Posizione rilevata: lat {pos.lat.toFixed(4)}, lon {pos.lon.toFixed(4)}
+        </small>
+      )}
+
       {err && <p style={{ color: "var(--danger)", marginTop: 6 }}>{err}</p>}
 
-      <p className="muted" style={{ margin: "6px 0 0" }}>
-        {resultsTitle} — <b>{Array.isArray(list) ? list.length : 0}</b> veicolo/i
+      <p className="muted cars-results-meta">
+        <span>
+          {resultsTitle} — <b>{total}</b> veicolo/i
+        </span>
+
+        {total > 0 && (
+          <span>
+            • pagina <b>{page}</b> di <b>{totalPages}</b>
+          </span>
+        )}
       </p>
 
-      {/* ⚠️ BOZZE */}
       {drafts.length > 0 && (
         <>
           <p className="muted" style={{ margin: "12px 0 0" }}>
@@ -429,9 +621,8 @@ export default function Cars() {
         </>
       )}
 
-      {/* 🔥 LISTA AUTO */}
       <div className="grid">
-        {(Array.isArray(list) ? list : []).map((car) => {
+        {list.map((car) => {
           const isMine = isSignedIn && car.owner && car.owner.clerkId === clerkUserId;
 
           return (
@@ -447,6 +638,12 @@ export default function Cars() {
                   <span className="tag">{car.year}</span>
                 </div>
 
+                {typeof car.distanceKm === "number" && (
+                  <p className="muted" style={{ margin: "8px 0 0" }}>
+                    Distanza: {car.distanceKm.toFixed(1)} km
+                  </p>
+                )}
+
                 <div className="footer-actions">
                   <Link className="btn" to={`/cars/${car.id}`}>
                     Dettaglio modello
@@ -458,7 +655,7 @@ export default function Cars() {
                       initialLiked={car.likedByMe ?? false}
                       onChange={(newLiked) => {
                         setList((prev) =>
-                          (Array.isArray(prev) ? prev : []).map((c) =>
+                          prev.map((c) =>
                             c.id === car.id ? { ...c, likedByMe: newLiked } : c
                           )
                         );
@@ -477,6 +674,57 @@ export default function Cars() {
           );
         })}
       </div>
+
+      {!loading && totalPages > 1 && (
+        <div className="cars-pagination">
+          <button
+            className="btn ghost"
+            disabled={page <= 1}
+            onClick={() => changePage(page - 1)}
+          >
+            ← Precedente
+          </button>
+
+          {page > 3 && (
+            <>
+              <button className="btn ghost" onClick={() => changePage(1)}>
+                1
+              </button>
+              {page > 4 && <span className="cars-pagination-ellipsis">...</span>}
+            </>
+          )}
+
+          {pageNumbers.map((p) => (
+            <button
+              key={p}
+              className={p === page ? "btn" : "btn ghost"}
+              onClick={() => changePage(p)}
+            >
+              {p}
+            </button>
+          ))}
+
+          {page < totalPages - 2 && (
+            <>
+              {page < totalPages - 3 && <span className="muted">...</span>}
+              <button className="btn ghost" onClick={() => changePage(totalPages)}>
+                {totalPages}
+              </button>
+            </>
+          )}
+
+          <button
+            className="btn ghost"
+            disabled={page >= totalPages}
+            onClick={() => changePage(page + 1)}
+          >
+            Successiva →
+          </button>
+          <div className="cars-pagination-summary">
+            Stai visualizzando la pagina {page} di {totalPages}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -8,7 +8,6 @@ import path from "path";
 import fs from "fs";
 import { buildPdfBuffer } from "../lib/buildInspection";
 
-
 const router = express.Router();
 
 const uploadDir = path.join(process.cwd(), "uploads", "perizie");
@@ -26,14 +25,83 @@ const storage = multer.diskStorage({
 const upload = multer({
   storage,
   fileFilter: (_req, file, cb) => {
-    // accetta solo pdf (puoi allargare dopo)
     if (file.mimetype !== "application/pdf") {
       return cb(new Error("Solo PDF consentiti"));
     }
     cb(null, true);
   },
-  limits: { fileSize: 15 * 1024 * 1024 }, // 15MB
+  limits: { fileSize: 15 * 1024 * 1024 },
 });
+
+function parsePositiveInt(value: any, fallback: number) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return fallback;
+  return Math.floor(n);
+}
+
+function parsePage(req: express.Request) {
+  return parsePositiveInt(req.query.page, 1);
+}
+
+function parsePageSize(req: express.Request) {
+  const raw = parsePositiveInt(req.query.pageSize, 6);
+  if (raw <= 6) return 6;
+  if (raw <= 9) return 9;
+  return 12;
+}
+
+function buildPaginatedResponse(items: any[], total: number, page: number, pageSize: number) {
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  return {
+    items,
+    total,
+    page,
+    pageSize,
+    totalPages,
+  };
+}
+
+async function getDbUserFromClerk(req: express.Request) {
+  const { userId: clerkUserId } = getAuth(req);
+  if (!clerkUserId) return null;
+
+  const user = await prisma.user.findUnique({
+    where: { clerkId: clerkUserId },
+  });
+
+  return user;
+}
+
+function buildCarsInclude(userId?: string) {
+  if (!userId) {
+    return {
+      owner: {
+        select: {
+          clerkId: true,
+        },
+      },
+    };
+  }
+
+  return {
+    owner: {
+      select: {
+        clerkId: true,
+      },
+    },
+    likes: {
+      where: { userId },
+      select: { id: true },
+    },
+  };
+}
+
+function addLikedByMe(cars: any[], hasUser: boolean) {
+  return cars.map((c: any) => ({
+    ...c,
+    likedByMe: hasUser ? (c.likes?.length ?? 0) > 0 : false,
+  }));
+}
 
 /**
  * POST /api/cars/:id/perizia/upload
@@ -64,7 +132,6 @@ router.post("/:id/perizia/upload", upload.single("file"), async (req, res) => {
       return res.status(403).json({ error: "Not allowed" });
     }
 
-    // URL pubblico del file (servito da express static /uploads)
     const docUrl = `/uploads/perizie/${req.file.filename}`;
 
     const updated = await prisma.car.update({
@@ -158,7 +225,6 @@ router.get("/:id/perizia/download", async (req, res) => {
   }
 });
 
-
 /**
  * POST /api/cars
  * ✅ Crea una nuova auto dell'utente loggato
@@ -192,8 +258,6 @@ router.post('/', async (req, res) => {
       photos,
       locationText,
       city,
-
-      // ✅ campi extra
       color,
       torqueNm,
       drivetrain,
@@ -205,7 +269,6 @@ router.post('/', async (req, res) => {
       trimLevel,
     } = req.body;
 
-
     if (
       offerPrice1 === undefined ||
       offerPrice2 === undefined ||
@@ -216,13 +279,11 @@ router.post('/', async (req, res) => {
 
     const normalize = (v: any) => (v === '' ? null : v);
 
-
     const finalTitle =
       typeof title === 'string' && title.trim().length > 0
         ? title.trim()
         : [make, model, year].filter(Boolean).join(' ') || 'Nuova auto';
 
-    // ✅ cover fallback (come nel PUT)
     const finalCover =
       typeof coverUrl === 'string' && coverUrl.trim() !== ''
         ? coverUrl
@@ -230,7 +291,6 @@ router.post('/', async (req, res) => {
         ? photos[0]
         : null;
 
-    // ✅ GEOCODING in CREATE (fondamentale per farla apparire in mappa)
     let latitude: number | null = null;
     let longitude: number | null = null;
 
@@ -275,7 +335,6 @@ router.post('/', async (req, res) => {
         latitude,
         longitude,
 
-        // ✅ extra
         engine: normalize(engine),
         trimLevel: normalize(trimLevel),
         color: normalize(color),
@@ -295,32 +354,45 @@ router.post('/', async (req, res) => {
   }
 });
 
-
 /**
  * GET /api/cars/search
- * 🔍 Cerca auto per marca, modello o titolo
+ * 🔍 Cerca auto per marca, modello o titolo con paginazione
  */
 router.get('/search', async (req, res) => {
   const query = String(req.query.query || '').trim();
-
-  if (!query) {
-    return res.status(200).json([]); // nessun termine → nessun errore
-  }
+  const page = parsePage(req);
+  const pageSize = parsePageSize(req);
+  const skip = (page - 1) * pageSize;
 
   try {
-    const cars = await prisma.car.findMany({
-      where: {
-        OR: [
-          { make: { contains: query, mode: 'insensitive' } },
-          { model: { contains: query, mode: 'insensitive' } },
-          { title: { contains: query, mode: 'insensitive' } },
-        ],
-      },
-      include: { owner: true },
-      orderBy: { createdAt: 'desc' },
-    });
+    const user = await getDbUserFromClerk(req);
 
-    return res.json(cars);
+    if (!query) {
+      return res.json(buildPaginatedResponse([], 0, page, pageSize));
+    }
+
+    const where = {
+      OR: [
+        { make: { contains: query, mode: 'insensitive' as const } },
+        { model: { contains: query, mode: 'insensitive' as const } },
+        { title: { contains: query, mode: 'insensitive' as const } },
+      ],
+    };
+
+    const [total, cars] = await Promise.all([
+      prisma.car.count({ where }),
+      prisma.car.findMany({
+        where,
+        include: buildCarsInclude(user?.id),
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: pageSize,
+      }),
+    ]);
+
+    return res.json(
+      buildPaginatedResponse(addLikedByMe(cars, !!user), total, page, pageSize)
+    );
   } catch (err) {
     console.error('GET /api/cars/search error:', err);
     return res.status(500).json({ error: 'Search error' });
@@ -328,66 +400,83 @@ router.get('/search', async (req, res) => {
 });
 
 /**
- * GET /cars/filter
- * Case-insensitive filtering
+ * GET /api/cars/filter
+ * 🔍 Filtri avanzati con paginazione
  */
 router.get("/filter", async (req, res) => {
-  let brands = req.query.brands?.toString().split(",").filter(Boolean) || [];
-  let models = req.query.models?.toString().split(",").filter(Boolean) || [];
+  const brands = req.query.brands?.toString().split(",").filter(Boolean) || [];
+  const models = req.query.models?.toString().split(",").filter(Boolean) || [];
+  const page = parsePage(req);
+  const pageSize = parsePageSize(req);
+  const skip = (page - 1) * pageSize;
 
   try {
-    const cars = await prisma.car.findMany({
-      where: {
-        AND: [
-          brands.length
-            ? {
-                OR: brands.map((b) => ({
-                  make: { equals: b, mode: "insensitive" },
-                })),
-              }
-            : {},
-          models.length
-            ? {
-                OR: models.map((m) => ({
-                  model: { equals: m, mode: "insensitive" },
-                })),
-              }
-            : {},
-        ],
-      },
-      include: { owner: true },
-    });
+    const user = await getDbUserFromClerk(req);
 
-    res.json(cars);
+    const where = {
+      AND: [
+        brands.length
+          ? {
+              OR: brands.map((b) => ({
+                make: { equals: b, mode: "insensitive" as const },
+              })),
+            }
+          : {},
+        models.length
+          ? {
+              OR: models.map((m) => ({
+                model: { equals: m, mode: "insensitive" as const },
+              })),
+            }
+          : {},
+      ],
+    };
+
+    const [total, cars] = await Promise.all([
+      prisma.car.count({ where }),
+      prisma.car.findMany({
+        where,
+        include: buildCarsInclude(user?.id),
+        orderBy: { createdAt: "desc" },
+        skip,
+        take: pageSize,
+      }),
+    ]);
+
+    return res.json(
+      buildPaginatedResponse(addLikedByMe(cars, !!user), total, page, pageSize)
+    );
   } catch (e) {
-    console.error("Errore filtro auto:", e);
-    res.status(500).json({ error: "Errore filtraggio" });
+    console.error("GET /api/cars/filter error:", e);
+    return res.status(500).json({ error: "Errore filtraggio" });
   }
 });
 
-
-
-
 /**
  * GET /api/cars/nearby
- * 📍 Mostra le auto nel raggio indicato
- * es: /api/cars/nearby?lat=45.32&lon=8.42&radius=5
+ * 📍 Mostra le auto nel raggio indicato con paginazione
+ * es: /api/cars/nearby?lat=45.32&lon=8.42&radius=5&page=1&pageSize=6
  */
 router.get("/nearby", async (req, res) => {
   const lat = Number(req.query.lat);
   const lon = Number(req.query.lon);
-  const radius = Number(req.query.radius ?? 5);
+  const radius = Number(req.query.radius ?? req.query.radiusKm ?? 5);
+  const page = parsePage(req);
+  const pageSize = parsePageSize(req);
+  const offset = (page - 1) * pageSize;
 
   if (Number.isNaN(lat) || Number.isNaN(lon)) {
     return res.status(400).json({ error: "Invalid coordinates" });
   }
 
   try {
-    const cars = await prisma.$queryRawUnsafe<any[]>(`
-      SELECT *
+    const user = await getDbUserFromClerk(req);
+
+    const totalRows = await prisma.$queryRawUnsafe<Array<{ count: bigint | number }>>(`
+      SELECT COUNT(*)::bigint AS count
       FROM (
         SELECT
-          *,
+          id,
           (
             6371 * acos(
               cos(radians(${lat})) *
@@ -401,63 +490,96 @@ router.get("/nearby", async (req, res) => {
           AND longitude IS NOT NULL
       ) t
       WHERE t."distanceKm" <= ${radius}
-      ORDER BY t."distanceKm" ASC
     `);
 
-    res.json(cars);
+    const totalRaw = totalRows?.[0]?.count ?? 0;
+    const total = typeof totalRaw === "bigint" ? Number(totalRaw) : Number(totalRaw);
+
+    const nearbyRows = await prisma.$queryRawUnsafe<Array<{ id: number; distanceKm: number }>>(`
+      SELECT *
+      FROM (
+        SELECT
+          id,
+          (
+            6371 * acos(
+              cos(radians(${lat})) *
+              cos(radians(latitude)) *
+              cos(radians(longitude) - radians(${lon})) +
+              sin(radians(${lat})) * sin(radians(latitude))
+            )
+          ) AS "distanceKm"
+        FROM "Car"
+        WHERE latitude IS NOT NULL
+          AND longitude IS NOT NULL
+      ) t
+      WHERE t."distanceKm" <= ${radius}
+      ORDER BY t."distanceKm" ASC, t.id DESC
+      LIMIT ${pageSize}
+      OFFSET ${offset}
+    `);
+
+    const ids = nearbyRows.map((r) => r.id);
+
+    if (!ids.length) {
+      return res.json(buildPaginatedResponse([], total, page, pageSize));
+    }
+
+    const cars = await prisma.car.findMany({
+      where: { id: { in: ids } },
+      include: buildCarsInclude(user?.id),
+    });
+
+    const distanceMap = new Map<number, number>();
+    for (const row of nearbyRows) {
+      distanceMap.set(row.id, Number(row.distanceKm));
+    }
+
+    const orderedCars = ids
+      .map((id) => cars.find((c) => c.id === id))
+      .filter(Boolean)
+      .map((car: any) => ({
+        ...car,
+        distanceKm: distanceMap.get(car.id) ?? null,
+      }));
+
+    return res.json(
+      buildPaginatedResponse(addLikedByMe(orderedCars, !!user), total, page, pageSize)
+    );
   } catch (e) {
-    console.error("GET /cars/nearby error", e);
-    res.status(500).json({ error: "Nearby search error" });
+    console.error("GET /api/cars/nearby error", e);
+    return res.status(500).json({ error: "Nearby search error" });
   }
 });
 
-
-
-
 /**
  * GET /api/cars
- * 🔥 Tutte le auto, con info se l'utente ha messo “like”
+ * 🔥 Tutte le auto con paginazione
  */
 router.get('/', async (req, res) => {
   try {
-    const { userId: clerkUserId } = getAuth(req);
+    const user = await getDbUserFromClerk(req);
+    const page = parsePage(req);
+    const pageSize = parsePageSize(req);
+    const skip = (page - 1) * pageSize;
 
-    let user = null;
+    const [total, cars] = await Promise.all([
+      prisma.car.count(),
+      prisma.car.findMany({
+        include: buildCarsInclude(user?.id),
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: pageSize,
+      }),
+    ]);
 
-    // Se è loggato, prendo l'utente dal DB
-    if (clerkUserId) {
-      user = await prisma.user.findUnique({
-        where: { clerkId: clerkUserId },
-      });
-    }
-
-    
-    // Prendo tutte le auto
-    const cars = await prisma.car.findMany({
-      include: user
-        ? {
-            owner: true,
-            likes: {
-              where: { userId: user.id },
-            },
-          }
-        : { owner: true },
-      orderBy: { createdAt: 'desc' },
-    });
-
-    // Aggiungo likedByMe
-    const result = cars.map((c: any) => ({
-      ...c,
-      likedByMe: user ? c.likes?.length > 0 : false,
-    }));
-
-    return res.json(result);
+    return res.json(
+      buildPaginatedResponse(addLikedByMe(cars, !!user), total, page, pageSize)
+    );
   } catch (e) {
     console.error('GET /api/cars error:', e);
     return res.status(500).json({ error: 'Error fetching cars' });
   }
 });
-
 
 /**
  * GET /api/cars/my-garage
@@ -471,12 +593,10 @@ router.get('/my-garage', async (req, res) => {
   }
 
   try {
-    // Trova l'utente nel DB
     const user = await prisma.user.findUnique({
       where: { clerkId: clerkUserId },
     });
 
-    // ✅ dopo
     if (!user) {
       return res.json({
         myCars: [],
@@ -484,15 +604,12 @@ router.get('/my-garage', async (req, res) => {
       });
     }
 
-
-    // ✅ Auto create da me
     const myCars = await prisma.car.findMany({
       where: { ownerId: user.id },
       include: { likes: true, owner: true },
       orderBy: { createdAt: 'desc' },
     });
 
-    // ✅ Auto che mi piacciono
     const likedCars = await prisma.car.findMany({
       where: {
         likes: {
@@ -503,27 +620,25 @@ router.get('/my-garage', async (req, res) => {
       orderBy: { createdAt: 'desc' },
     });
 
-      const myCarsWithLikes = myCars.map(c => ({
-        ...c,
-        likedByMe: c.likes.length > 0,
-      }));
+    const myCarsWithLikes = myCars.map(c => ({
+      ...c,
+      likedByMe: c.likes.length > 0,
+    }));
 
-      const likedCarsWithLikes = likedCars.map(c => ({
-        ...c,
-        likedByMe: true,
-      }));
+    const likedCarsWithLikes = likedCars.map(c => ({
+      ...c,
+      likedByMe: true,
+    }));
 
-      return res.json({
-        myCars: myCarsWithLikes,
-        likedCars: likedCarsWithLikes,
-      });
-
+    return res.json({
+      myCars: myCarsWithLikes,
+      likedCars: likedCarsWithLikes,
+    });
   } catch (err) {
     console.error('GET /api/cars/my-garage error:', err);
     return res.status(500).json({ error: 'Error fetching my garage' });
   }
 });
-
 
 /**
  * GET /api/cars/:id
@@ -577,13 +692,11 @@ router.post('/:carId/like', async (req, res) => {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    // controlla che l'auto esista
     const car = await prisma.car.findUnique({ where: { id: carId } });
     if (!car) {
       return res.status(404).json({ error: 'Car not found' });
     }
 
-    // crea il like se non esiste (grazie a @@unique userId+carId)
     await prisma.like.upsert({
       where: {
         userId_carId: {
@@ -653,7 +766,6 @@ router.put('/:id', async (req, res) => {
   }
 
   try {
-    // ✔ Trova utente
     const user = await prisma.user.findUnique({
       where: { clerkId: clerkUserId },
     });
@@ -662,7 +774,6 @@ router.put('/:id', async (req, res) => {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    // ✔ Trova auto
     const car = await prisma.car.findUnique({
       where: { id: carId },
     });
@@ -671,7 +782,6 @@ router.put('/:id', async (req, res) => {
       return res.status(404).json({ error: 'Car not found' });
     }
 
-    // ✔ Controllo permessi
     if (car.ownerId !== user.id) {
       return res.status(403).json({ error: 'Not allowed to edit this car' });
     }
@@ -686,11 +796,8 @@ router.put('/:id', async (req, res) => {
       return res.status(400).json({ error: "I tre prezzi sono obbligatori" });
     }
 
-
-    // ⭐ Normalizzatore per nullable
     const normalize = (v: any) => (v === '' ? null : v);
 
-    // ⭐ FISSA: aggiorniamo TUTTI i campi arrivati dal frontend
     const data: any = {
       make: normalize(req.body.make),
       model: normalize(req.body.model),
@@ -715,17 +822,15 @@ router.put('/:id', async (req, res) => {
       doors: normalize(req.body.doors),
       priceEur: normalize(req.body.priceEur),
     };
+
     data.offerPrice1 = Number(offerPrice1);
     data.offerPrice2 = Number(offerPrice2);
     data.offerPrice3 = Number(offerPrice3);
 
-
-    // ⭐ AGGIORNAMENTO FOTO
     if (Array.isArray(req.body.photos)) {
-      data.photos = req.body.photos; // ⬅️ salva array completo
+      data.photos = req.body.photos;
     }
 
-    // ⭐ FIX COVER
     data.coverUrl =
       typeof req.body.coverUrl === 'string' && req.body.coverUrl.trim() !== ''
         ? req.body.coverUrl
@@ -733,20 +838,18 @@ router.put('/:id', async (req, res) => {
         ? req.body.photos[0]
         : car.coverUrl;
 
-      if (data.locationText || data.city) {
-        const geo = await geocodeAddress(
-          data.locationText ?? "",
-          data.city ?? undefined
-        );
+    if (data.locationText || data.city) {
+      const geo = await geocodeAddress(
+        data.locationText ?? "",
+        data.city ?? undefined
+      );
 
-        if (geo) {
-          data.latitude = geo.lat;
-          data.longitude = geo.lng;
-        }
+      if (geo) {
+        data.latitude = geo.lat;
+        data.longitude = geo.lng;
       }
+    }
 
-
-    // ⭐ Ora aggiorno davvero tutto
     const updated = await prisma.car.update({
       where: { id: carId },
       data,
@@ -758,9 +861,6 @@ router.put('/:id', async (req, res) => {
     return res.status(500).json({ error: 'Error updating car' });
   }
 });
-
-
-
 
 /**
  * DELETE /api/cars/:id
@@ -790,26 +890,22 @@ router.delete("/:id", async (req, res) => {
       return res.status(404).json({ error: "Car not found" });
     }
 
-    // 🚫 non è la sua
     if (car.ownerId !== user.id) {
       return res.status(403).json({ error: "Not allowed to delete this car" });
     }
 
-    // 1) blocco se ci sono offerte (attive o passate)
     const offerCount = await prisma.offer.count({
       where: { carId },
     });
+
     if (offerCount > 0) {
       return res.status(400).json({
         error: "Non puoi eliminare un'auto che ha offerte attive o passate.",
       });
     }
 
-    // 2) blocco se c'è una perizia in corso (appuntamento non finito)
     const now = new Date();
 
-    // "In corso" = status non finale E endAt >= adesso
-    // finali: DONE, CANCELLED
     const inProgressInspection = await prisma.inspectionRequest.findFirst({
       where: {
         carId,
@@ -827,8 +923,6 @@ router.delete("/:id", async (req, res) => {
       });
     }
 
-    // (opzionale ma utile) Se esistono perizie non finali ma ormai finite nel tempo,
-    // le chiudiamo automaticamente prima di eliminare.
     await prisma.inspectionRequest.updateMany({
       where: {
         carId,
@@ -838,9 +932,6 @@ router.delete("/:id", async (req, res) => {
       data: { status: "CANCELLED" },
     });
 
-    // 3) elimina l'auto
-    // Grazie alle cascade:
-    // Car -> InspectionRequest -> Chat -> Message
     await prisma.car.delete({ where: { id: carId } });
 
     return res.json({ success: true });
@@ -849,4 +940,5 @@ router.delete("/:id", async (req, res) => {
     return res.status(500).json({ error: "Error deleting car" });
   }
 });
+
 export default router;

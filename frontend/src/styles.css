@@ -1297,3 +1297,145 @@ button.primary{
     width: min(260px, calc(100vw - 40px)) !important;
   }
 }
+
+/* =====================
+   CARS PAGINATION + VIEW SIZE
+===================== */
+.cars-toolbar-spacer{
+  flex: 1 1 auto;
+}
+
+.cars-page-size-wrap{
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: nowrap;
+}
+
+.cars-page-size-label{
+  color: var(--muted);
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+.cars-page-size-select{
+  min-width: 122px;
+  width: 122px;
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  padding-right: 38px;
+  cursor: pointer;
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--text) 50%),
+    linear-gradient(135deg, var(--text) 50%, transparent 50%);
+  background-position:
+    calc(100% - 18px) 17px,
+    calc(100% - 12px) 17px;
+  background-size: 6px 6px, 6px 6px;
+  background-repeat: no-repeat;
+}
+
+.cars-results-meta{
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 8px 0 0;
+}
+
+.cars-pagination{
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 22px;
+}
+
+.cars-pagination .btn,
+.cars-pagination .btn.ghost{
+  min-width: 42px;
+  padding-left: 14px;
+  padding-right: 14px;
+  box-shadow: none;
+}
+
+.cars-pagination .btn.ghost{
+  background: rgba(255,255,255,0.02);
+}
+
+.cars-pagination .btn:not(:disabled):hover,
+.cars-pagination .btn.ghost:not(:disabled):hover{
+  transform: translateY(-1px);
+}
+
+.cars-pagination-ellipsis{
+  color: var(--muted);
+  padding: 0 2px;
+  user-select: none;
+}
+
+.cars-pagination-summary{
+  width: 100%;
+  text-align: center;
+  color: var(--muted);
+  font-size: 13px;
+  margin-top: 2px;
+}
+
+/* =====================
+   CARS PAGE RESPONSIVE
+===================== */
+@media (max-width: 720px){
+  .cars-page-size-wrap{
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .cars-page-size-select{
+    width: 100%;
+    min-width: 0;
+  }
+
+  .cars-toolbar-spacer{
+    display: none;
+  }
+
+  .cars-pagination{
+    gap: 6px;
+  }
+
+  .cars-pagination .btn,
+  .cars-pagination .btn.ghost{
+    min-width: 40px;
+    height: 40px;
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+}
+
+@media (max-width: 560px){
+  .cars-page-size-wrap{
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .cars-page-size-label{
+    width: 100%;
+  }
+
+  .cars-pagination{
+    justify-content: center;
+  }
+
+  .cars-pagination .btn,
+  .cars-pagination .btn.ghost{
+    flex: 0 0 auto;
+  }
+
+  .cars-pagination .btn:first-child,
+  .cars-pagination .btn:last-child{
+    width: 100%;
+  }
+}

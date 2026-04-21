@@ -736,3 +736,11 @@ update 01/04/2026
     non invia niente.
 4. inserito i riquadri rossi in caso di dimenticanza, andato in bozza, mettendo il pop up che ti sei dimenticato i campi 
     e cerchiando di rosso(6)
+
+-------------------
+update 14/04/2026
+1. gestire per pagine le card
+
+------------------
+update 21/04/2026
+1. incominciato a vedere come integrare sistema di pagamento, pensiamo di usare stripe
