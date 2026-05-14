@@ -13,6 +13,7 @@ import AscariPopup from '../components/AscariPopup';
 import {
   CAR_BRANDS,
   FUEL_TYPES,
+  TRANSMISSION_TYPES,
   CAR_MODELS_BY_BRAND_KEY,
 } from '../../../backend/src/constants/carOptions';
 import SelectableDropdown from '../components/SelectableDropdown';
@@ -61,6 +62,7 @@ type RequiredFieldKey =
   | 'locationText'
   | 'city'
   | 'fuelType'
+  | 'transmission'
   | 'photos'
   | 'offerPrice1'
   | 'offerPrice2'
@@ -73,17 +75,97 @@ const REQUIRED_FIELD_LABELS: Record<RequiredFieldKey, string> = {
   locationText: 'Indirizzo',
   city: 'Città',
   fuelType: 'Carburante',
+  transmission: 'Cambio',
   photos: 'Foto',
   offerPrice1: 'Prezzo 1',
   offerPrice2: 'Prezzo 2',
   offerPrice3: 'Prezzo 3',
 };
 
+const ASCARI_FEE_RATE = 0.1;
+
+type OfferPriceValue = number | '';
+
+type OfferPriceInputBlockProps = {
+  label: string;
+  value: OfferPriceValue;
+  setValue: (value: OfferPriceValue) => void;
+  inputClassName: string;
+  hasError: boolean;
+  showBreakdown: boolean;
+};
+
+function parseOfferPrice(value: OfferPriceValue): number {
+  if (value === '') return 0;
+
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function formatAscariEuro(value: number): string {
+  return new Intl.NumberFormat('it-IT', {
+    style: 'currency',
+    currency: 'EUR',
+    maximumFractionDigits: 0,
+  }).format(value);
+}
+
+function OfferPriceInputBlock({
+  label,
+  value,
+  setValue,
+  inputClassName,
+  hasError,
+  showBreakdown,
+}: OfferPriceInputBlockProps) {
+  const gross = parseOfferPrice(value);
+  const hasValue = gross > 0;
+  const ascariFee = hasValue ? gross * ASCARI_FEE_RATE : 0;
+  const sellerNet = hasValue ? gross - ascariFee : 0;
+
+  return (
+    <div className={`ascari-offer-price-item ${hasError ? 'is-error' : ''}`}>
+      <div className="ascari-offer-price-input-head">
+        <span>{label}</span>
+        <small>Offerta accettabile</small>
+      </div>
+
+      <input
+        className={inputClassName}
+        type="number"
+        placeholder="Inserisci prezzo *"
+        value={value}
+        onChange={(e) =>
+          setValue(e.target.value === '' ? '' : Number(e.target.value))
+        }
+      />
+
+      {showBreakdown && (
+        <div className="ascari-offer-breakdown">
+          <div className="ascari-offer-breakdown-box">
+            <span>Prezzo lordo</span>
+            <strong>{hasValue ? formatAscariEuro(gross) : '—'}</strong>
+          </div>
+
+          <div className="ascari-offer-breakdown-box">
+            <span>Commissione Ascari 10%</span>
+            <strong>{hasValue ? formatAscariEuro(ascariFee) : '—'}</strong>
+          </div>
+
+          <div className="ascari-offer-breakdown-box net">
+            <span>Netto venditore</span>
+            <strong>{hasValue ? formatAscariEuro(sellerNet) : '—'}</strong>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function CarNew() {
   const nav = useNavigate();
   const [params] = useSearchParams();
   const draftId = params.get('draft') || '';
-
   const { getToken } = useAuth();
 
   const [make, setMake] = useState('');
@@ -94,11 +176,12 @@ export default function CarNew() {
   const [horsepower, setHorsepower] = useState<number | ''>('');
   const [mileageKm, setMileageKm] = useState<number | ''>('');
   const [description, setDescription] = useState('');
-  const [coverUrl, setCoverUrl] = useState<string>('');
+  const [coverUrl, setCoverUrl] = useState('');
   const [photos, setPhotos] = useState<string[]>([]);
   const [offerPrice1, setOfferPrice1] = useState<number | ''>('');
   const [offerPrice2, setOfferPrice2] = useState<number | ''>('');
   const [offerPrice3, setOfferPrice3] = useState<number | ''>('');
+  const [acceptedPricesOpen, setAcceptedPricesOpen] = useState(true);
   const [locationText, setLocationText] = useState('');
   const [city, setCity] = useState('');
   const [latitude, setLatitude] = useState<number | null>(null);
@@ -119,6 +202,8 @@ export default function CarNew() {
   const [showPopup, setShowPopup] = useState(false);
   const [highlightMissing, setHighlightMissing] = useState(false);
   const [missingFields, setMissingFields] = useState<RequiredFieldKey[]>([]);
+
+  
 
   const inputRef = useRef<HTMLInputElement | null>(null);
 
@@ -193,6 +278,7 @@ export default function CarNew() {
     locationText,
     city,
     fuelType,
+    transmission,
     photos,
     offerPrice1,
     offerPrice2,
@@ -201,6 +287,7 @@ export default function CarNew() {
 
   function sanitizeMissingFields(fields: unknown): RequiredFieldKey[] {
     if (!Array.isArray(fields)) return [];
+
     const allowed: RequiredFieldKey[] = [
       'make',
       'model',
@@ -208,12 +295,16 @@ export default function CarNew() {
       'locationText',
       'city',
       'fuelType',
+      'transmission',
       'photos',
       'offerPrice1',
       'offerPrice2',
       'offerPrice3',
     ];
-    return fields.filter((f): f is RequiredFieldKey => allowed.includes(f as RequiredFieldKey));
+
+    return fields.filter((f): f is RequiredFieldKey =>
+      allowed.includes(f as RequiredFieldKey)
+    );
   }
 
   function getMissingRequiredFields(): RequiredFieldKey[] {
@@ -225,6 +316,7 @@ export default function CarNew() {
     if (!locationText.trim()) list.push('locationText');
     if (!city.trim()) list.push('city');
     if (!fuelType.trim()) list.push('fuelType');
+    if (!transmission.trim()) list.push('transmission');
     if (!Array.isArray(photos) || photos.length === 0) list.push('photos');
     if (offerPrice1 === '' || Number(offerPrice1) <= 0) list.push('offerPrice1');
     if (offerPrice2 === '' || Number(offerPrice2) <= 0) list.push('offerPrice2');
@@ -273,6 +365,43 @@ export default function CarNew() {
     }
   }
 
+  function buildPayload(missing: RequiredFieldKey[]) {
+    const finalTitle =
+      title.trim() ||
+      [make, model, year].filter(Boolean).join(' ') ||
+      'Nuova auto';
+
+    return {
+      make: make.trim(),
+      model: model.trim(),
+      title: finalTitle,
+      year: Number(year),
+      fuelType: fuelType.trim(),
+      horsepower: horsepower === '' ? undefined : Number(horsepower),
+      mileageKm: mileageKm === '' ? undefined : Number(mileageKm),
+      description: description.trim() || undefined,
+      coverUrl: coverUrl.trim() || photos[0] || undefined,
+      photos,
+      offerPrice1: offerPrice1 === '' ? undefined : Number(offerPrice1),
+      offerPrice2: offerPrice2 === '' ? undefined : Number(offerPrice2),
+      offerPrice3: offerPrice3 === '' ? undefined : Number(offerPrice3),
+      locationText: locationText.trim(),
+      city: city.trim(),
+      latitude: latitude ?? undefined,
+      longitude: longitude ?? undefined,
+      color: color.trim() || undefined,
+      torqueNm: torqueNm === '' ? undefined : Number(torqueNm),
+      drivetrain: drivetrain.trim() || undefined,
+      transmission: transmission.trim(),
+      seats: seats === '' ? undefined : Number(seats),
+      doors: doors === '' ? undefined : Number(doors),
+      priceEur: priceEur === '' ? undefined : Number(priceEur),
+      engine: engine.trim() || undefined,
+      trimLevel: trimLevel.trim() || undefined,
+      missingRequiredFields: missing,
+    };
+  }
+
   async function onSave() {
     setErr(null);
     setOk(null);
@@ -280,40 +409,27 @@ export default function CarNew() {
     const missing = getMissingRequiredFields();
     setMissingFields(missing);
 
-    const finalTitle =
-      title.trim() ||
-      [make, model, year].filter(Boolean).join(' ') ||
-      'Nuova auto';
+    const payload = buildPayload(missing);
 
-    const payload = {
-      make,
-      model,
-      title: finalTitle,
-      year: Number(year),
-      fuelType: fuelType || undefined,
-      horsepower: horsepower === '' ? undefined : Number(horsepower),
-      mileageKm: mileageKm === '' ? undefined : Number(mileageKm),
-      description: description || undefined,
-      coverUrl: coverUrl || photos[0] || undefined,
-      photos,
-      offerPrice1: offerPrice1 === '' ? undefined : offerPrice1,
-      offerPrice2: offerPrice2 === '' ? undefined : offerPrice2,
-      offerPrice3: offerPrice3 === '' ? undefined : offerPrice3,
-      locationText: locationText || undefined,
-      city: city || undefined,
-      latitude: latitude ?? undefined,
-      longitude: longitude ?? undefined,
-      color: color || undefined,
-      torqueNm: torqueNm === '' ? undefined : Number(torqueNm),
-      drivetrain: drivetrain || undefined,
-      transmission: transmission || undefined,
-      seats: seats === '' ? undefined : Number(seats),
-      doors: doors === '' ? undefined : Number(doors),
-      priceEur: priceEur === '' ? undefined : Number(priceEur),
-      engine: engine || undefined,
-      trimLevel: trimLevel || undefined,
-      missingRequiredFields: missing,
-    };
+    if (missing.length > 0) {
+      setHighlightMissing(true);
+      setShowPopup(true);
+
+      const draft = {
+        id: draftId || uid(),
+        createdAt: Date.now(),
+        ...payload,
+      };
+
+      if (draftId) {
+        upsertDraft(draft as any);
+      } else {
+        addDraft(draft as any);
+      }
+
+      setOk('Bozza salvata. Correggi i campi obbligatori evidenziati in rosso.');
+      return;
+    }
 
     try {
       const token = await getToken();
@@ -346,14 +462,7 @@ export default function CarNew() {
         addDraft(draft as any);
       }
 
-      if (missing.length > 0) {
-        setHighlightMissing(true);
-        setShowPopup(true);
-        setOk('Bozza salvata. Correggi i campi obbligatori evidenziati in rosso.');
-        return;
-      }
-
-      setOk('DB non raggiungibile, salvata bozza');
+      setOk('DB non raggiungibile, salvata bozza locale.');
       setTimeout(() => nav('/cars'), 500);
     }
   }
@@ -364,11 +473,14 @@ export default function CarNew() {
     <div>
       {showPopup && (
         <AscariPopup
+          title="Campi obbligatori mancanti"
           message={
             missingFields.length > 0
-              ? `Bozza salvata. Completa i campi obbligatori evidenziati in rosso: ${missingLabels.join(', ')}.`
-              : 'Aggiungi almeno una foto e potrai venderla!'
+              ? `Completa i campi obbligatori evidenziati in rosso: ${missingLabels.join(', ')}.`
+              : 'Completa i campi obbligatori.'
           }
+          variant="warning"
+          confirmText="Chiudi"
           onClose={() => setShowPopup(false)}
         />
       )}
@@ -387,8 +499,7 @@ export default function CarNew() {
 
       {highlightMissing && missingFields.length > 0 && (
         <div className="ascari-warning-banner" style={{ marginTop: 12 }}>
-          <strong>Campi obbligatori mancanti:</strong>{' '}
-          {missingLabels.join(', ')}.
+          <strong>Campi obbligatori mancanti:</strong> {missingLabels.join(', ')}.
         </div>
       )}
 
@@ -474,15 +585,24 @@ export default function CarNew() {
                 />
               </div>
 
+              <div style={{ width: '100%', marginTop: 10 }}>
+                <label className="muted">Cambio *</label>
+                <SelectableDropdown
+                  label="Cambio"
+                  value={transmission}
+                  options={TRANSMISSION_TYPES}
+                  onChange={setTransmission}
+                  hasError={hasFieldError('transmission')}
+                />
+              </div>
+
               <input
                 className="input"
                 type="number"
                 placeholder="Potenza (CV)"
                 value={horsepower}
                 onChange={(e) =>
-                  setHorsepower(
-                    e.target.value === '' ? '' : parseInt(e.target.value, 10)
-                  )
+                  setHorsepower(e.target.value === '' ? '' : parseInt(e.target.value, 10))
                 }
               />
 
@@ -492,9 +612,7 @@ export default function CarNew() {
                 placeholder="Chilometri"
                 value={mileageKm}
                 onChange={(e) =>
-                  setMileageKm(
-                    e.target.value === '' ? '' : parseInt(e.target.value, 10)
-                  )
+                  setMileageKm(e.target.value === '' ? '' : parseInt(e.target.value, 10))
                 }
               />
             </div>
@@ -514,22 +632,11 @@ export default function CarNew() {
           </div>
         </section>
 
-        <section
-          className={`card ${hasFieldError('photos') ? 'ascari-section-error' : ''}`}
-        >
+        <section className={`card ${hasFieldError('photos') ? 'ascari-section-error' : ''}`}>
           <div className="card-body">
-            <h3 style={{ marginTop: 0 }}>
-              Immagini {hasFieldError('photos') ? '*' : ''}
-            </h3>
+            <h3 style={{ marginTop: 0 }}>Immagini *</h3>
 
-            <div
-              className="row"
-              style={{
-                gap: 8,
-                flexWrap: 'wrap',
-                marginBottom: 8,
-              }}
-            >
+            <div className="row" style={{ gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
               <input
                 ref={inputRef}
                 type="file"
@@ -556,22 +663,11 @@ export default function CarNew() {
             <div className="grid">
               {photos.map((src, i) => (
                 <div key={i} className="card">
-                  <img
-                    src={src}
-                    style={{
-                      width: '100%',
-                      display: 'block',
-                    }}
-                  />
+                  <img src={src} style={{ width: '100%', display: 'block' }} />
                   <div className="card-body">
                     <div className="row space">
-                      <small className="muted">
-                        {i === 0 ? '#1' : '#' + (i + 1)}
-                      </small>
-                      <button
-                        className="btn secondary"
-                        onClick={() => removePhoto(i)}
-                      >
+                      <small className="muted">{i === 0 ? '#1' : '#' + (i + 1)}</small>
+                      <button className="btn secondary" onClick={() => removePhoto(i)}>
                         Rimuovi
                       </button>
                     </div>
@@ -582,48 +678,70 @@ export default function CarNew() {
           </div>
         </section>
 
-        <section className="card" style={{ minHeight: 380 }}>
+        <section
+          className={`card ascari-accepted-prices-card ${
+            hasFieldError('offerPrice1') ||
+            hasFieldError('offerPrice2') ||
+            hasFieldError('offerPrice3')
+              ? 'ascari-section-error'
+              : ''
+          }`}
+          style={{ minHeight: 380 }}
+        >
           <div className="card-body">
-            <h3>Prezzi accettati</h3>
-            <p className="muted">
-              Inserisci i 3 prezzi che sei disposto ad accettare
-            </p>
+            <div className="ascari-accepted-prices-header">
+              <div>
+                <h3>Prezzi accettati *</h3>
+                <p className="muted">
+                  Inserisci i 3 prezzi che sei disposto ad accettare.
+                </p>
+              </div>
 
-            <input
-              className={getFieldClass('offerPrice1')}
-              type="number"
-              placeholder="Inserisci prezzo *"
-              value={offerPrice1}
-              onChange={(e) =>
-                setOfferPrice1(
-                  e.target.value === '' ? '' : Number(e.target.value)
-                )
-              }
-            />
+              <button
+                type="button"
+                className="ascari-offers-toggle"
+                onClick={() => setAcceptedPricesOpen((prev) => !prev)}
+              >
+                <span>{acceptedPricesOpen ? 'Nascondi dettagli' : 'Mostra dettagli'}</span>
+                <strong>{acceptedPricesOpen ? '−' : '+'}</strong>
+              </button>
+            </div>
 
-            <input
-              className={getFieldClass('offerPrice2')}
-              type="number"
-              placeholder="Inserisci prezzo *"
-              value={offerPrice2}
-              onChange={(e) =>
-                setOfferPrice2(
-                  e.target.value === '' ? '' : Number(e.target.value)
-                )
-              }
-            />
+            <div className="ascari-offer-price-list">
+              <OfferPriceInputBlock
+                label="Prezzo 1"
+                value={offerPrice1}
+                setValue={setOfferPrice1}
+                inputClassName={getFieldClass('offerPrice1')}
+                hasError={hasFieldError('offerPrice1')}
+                showBreakdown={acceptedPricesOpen}
+              />
 
-            <input
-              className={getFieldClass('offerPrice3')}
-              type="number"
-              placeholder="Inserisci prezzo *"
-              value={offerPrice3}
-              onChange={(e) =>
-                setOfferPrice3(
-                  e.target.value === '' ? '' : Number(e.target.value)
-                )
-              }
-            />
+              <OfferPriceInputBlock
+                label="Prezzo 2"
+                value={offerPrice2}
+                setValue={setOfferPrice2}
+                inputClassName={getFieldClass('offerPrice2')}
+                hasError={hasFieldError('offerPrice2')}
+                showBreakdown={acceptedPricesOpen}
+              />
+
+              <OfferPriceInputBlock
+                label="Prezzo 3"
+                value={offerPrice3}
+                setValue={setOfferPrice3}
+                inputClassName={getFieldClass('offerPrice3')}
+                hasError={hasFieldError('offerPrice3')}
+                showBreakdown={acceptedPricesOpen}
+              />
+            </div>
+
+            {acceptedPricesOpen && (
+              <div className="ascari-offer-note">
+                Questi sono solo i prezzi delle offerte accettabili. Non modificano il
+                prezzo finale di vendita configurato nel pagamento.
+              </div>
+            )}
           </div>
         </section>
       </div>
@@ -633,7 +751,6 @@ export default function CarNew() {
           color,
           torqueNm,
           drivetrain,
-          transmission,
           seats,
           doors,
           priceEur,
@@ -644,7 +761,6 @@ export default function CarNew() {
           if ('color' in obj) setColor(obj.color ?? '');
           if ('torqueNm' in obj) setTorqueNm(obj.torqueNm ?? '');
           if ('drivetrain' in obj) setDrivetrain(obj.drivetrain ?? '');
-          if ('transmission' in obj) setTransmission(obj.transmission ?? '');
           if ('seats' in obj) setSeats(obj.seats ?? '');
           if ('doors' in obj) setDoors(obj.doors ?? '');
           if ('priceEur' in obj) setPriceEur(obj.priceEur ?? '');
@@ -653,10 +769,7 @@ export default function CarNew() {
         }}
       />
 
-      <div
-        className="row"
-        style={{ marginTop: 14, justifyContent: 'flex-end' }}
-      >
+      <div className="row" style={{ marginTop: 14, justifyContent: 'flex-end' }}>
         <button className="btn" onClick={onSave}>
           Salva
         </button>
@@ -669,13 +782,8 @@ function fileToDataURL(f: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const r = new FileReader();
 
-    r.onload = () => {
-      resolve(String(r.result));
-    };
-
-    r.onerror = () => {
-      reject(r.error || new Error('Errore nella lettura del file'));
-    };
+    r.onload = () => resolve(String(r.result));
+    r.onerror = () => reject(r.error || new Error('Errore nella lettura del file'));
 
     r.readAsDataURL(f);
   });

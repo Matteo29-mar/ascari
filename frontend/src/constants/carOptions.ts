@@ -90,3 +90,9 @@ export const CAR_MODELS_BY_BRAND_KEY: Record<string, string[]> = {
   volkswagen: ['Polo', 'Golf', 'Lupo', 'Fox', 'Passat', 'Arteon', 'T-Cross', 'T-Roc', 'Tiguan', 'Touareg', 'ID.3', 'ID.4', 'ID.Buzz'],
   volvo: ['S60', 'S90', 'V60', 'V90', 'XC40', 'XC60', 'XC90', 'EX30', 'EX90'],
 };
+
+export const TRANSMISSION_TYPES = [
+  { key: 'manuale', label: 'Manuale', icon: '/transmission/manuale.png' },
+  { key: 'automatico', label: 'Automatico', icon: '/transmission/automatico.png' },
+  { key: 'sequenziale', label: 'Sequenziale', icon: '/transmission/sequenziale.png' },
+];

@@ -32,19 +32,33 @@ import ExploreMap from "./pages/ExploreMap";
 
 import InspectorRegister from "./pages/InspectorRegister";
 import InspectorDashboard from "./pages/InspectorDashboard";
-
-import { AuthButtons } from "./components/AuthButtons";
-import { OfferProvider, useOffers } from "./context/OfferContext";
-import { ThemeProvider, useTheme } from "./context/ThemeContext";
-import { useRole } from "./hooks/useRole";
 import InspectorWorkshop from "./pages/InspectorWorkshop";
 import InspectorReport from "./pages/InspectorReport";
 import InspectorReportDetail from "./pages/InspectorReportDetail";
-import { getUnreadChatCount } from "./api";
+import PaymentReturn from "./pages/PaymentReturn";
+import History from "./pages/History";
+import HistoryDetail from "./pages/HistoryDetail";
 
-// ===============================
-// Menu dropdown "Sei altro?"
-// ===============================
+import { AuthButtons } from "./components/AuthButtons";
+import AscariPopup from "./components/AscariPopup";
+import { OfferProvider, useOffers } from "./context/OfferContext";
+import { ThemeProvider, useTheme } from "./context/ThemeContext";
+import { useRole } from "./hooks/useRole";
+import {
+  getUnreadChatCount,
+  getStripeAccountStatus,
+  createStripeOnboardingLink,
+} from "./api";
+
+type StripeAccountStatus = {
+  accountId?: string | null;
+  status: "NOT_STARTED" | "PENDING" | "ENABLED";
+  chargesEnabled: boolean;
+  payoutsEnabled: boolean;
+  detailsSubmitted: boolean;
+  onboardingCompleted: boolean;
+};
+
 function SeiAltroMenu({
   mobile = false,
   onNavigate,
@@ -106,9 +120,238 @@ function SeiAltroMenu({
   );
 }
 
-// ===============================
-// Layout con navbar e contenuto
-// ===============================
+function PaymentsPage() {
+  const { isSignedIn, getToken } = useClerkAuth();
+  const { openSignIn } = useClerk();
+
+  const [status, setStatus] = useState<StripeAccountStatus | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [popup, setPopup] = useState<{
+    open: boolean;
+    title?: string;
+    message?: string;
+    variant?: "success" | "error" | "warning" | "info";
+  }>({
+    open: false,
+    title: "",
+    message: "",
+    variant: "info",
+  });
+
+  async function loadStatus() {
+    if (!isSignedIn) {
+      setStatus(null);
+      setLoading(false);
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const token = await getToken();
+      if (!token) {
+        setStatus(null);
+        return;
+      }
+
+      const data = await getStripeAccountStatus(token);
+      setStatus(data);
+    } catch (e: any) {
+      setPopup({
+        open: true,
+        title: "Errore pagamenti",
+        message:
+          e?.response?.data?.error ||
+          e?.message ||
+          "Impossibile caricare lo stato dei pagamenti.",
+        variant: "error",
+      });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    loadStatus();
+  }, [isSignedIn]);
+
+  async function handleEnablePayments() {
+    if (!isSignedIn) {
+      openSignIn();
+      return;
+    }
+
+    try {
+      setBusy(true);
+      const token = await getToken();
+      if (!token) {
+        openSignIn();
+        return;
+      }
+
+      const data = await createStripeOnboardingLink(token);
+      if (!data?.url) {
+        throw new Error("Link onboarding Stripe non disponibile");
+      }
+
+      window.location.href = data.url;
+    } catch (e: any) {
+      setPopup({
+        open: true,
+        title: "Errore Stripe",
+        message:
+          e?.response?.data?.error ||
+          e?.message ||
+          "Impossibile avviare l’onboarding Stripe.",
+        variant: "error",
+      });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const badge = (() => {
+    if (!status) return { text: "Non disponibile", color: "#94a3b8" };
+    if (status.status === "ENABLED") return { text: "Abilitato", color: "#34d399" };
+    if (status.status === "PENDING") return { text: "In verifica", color: "#fbbf24" };
+    return { text: "Non configurato", color: "#94a3b8" };
+  })();
+
+  return (
+    <div style={{ maxWidth: 980, margin: "0 auto" }}>
+      <h1 className="h1">Pagamenti</h1>
+      <p className="muted" style={{ lineHeight: 1.7 }}>
+        Collega Stripe per ricevere i pagamenti delle vendite su Ascari.
+        Una volta abilitato l’account, potrai configurare il prezzo vendita
+        sulle tue auto e vedere in tempo reale il netto venditore e la commissione Ascari.
+      </p>
+
+      <div className="card" style={{ marginTop: 18 }}>
+        <div className="card-body">
+          {loading ? (
+            <p>Caricamento stato pagamenti...</p>
+          ) : (
+            <>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  gap: 16,
+                  alignItems: "center",
+                  flexWrap: "wrap",
+                }}
+              >
+                <div>
+                  <h3 style={{ marginTop: 0, marginBottom: 8 }}>Stato account Stripe</h3>
+                  <div
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 8,
+                      padding: "8px 12px",
+                      borderRadius: 999,
+                      border: `1px solid ${badge.color}55`,
+                      background: `${badge.color}22`,
+                      color: badge.color,
+                      fontWeight: 800,
+                    }}
+                  >
+                    <span
+                      style={{
+                        width: 8,
+                        height: 8,
+                        borderRadius: "50%",
+                        background: badge.color,
+                      }}
+                    />
+                    {badge.text}
+                  </div>
+                </div>
+
+                <button
+                  className="btn"
+                  type="button"
+                  onClick={handleEnablePayments}
+                  disabled={busy}
+                  style={{ minWidth: 220 }}
+                >
+                  {busy
+                    ? "Attendere..."
+                    : status?.status === "ENABLED"
+                    ? "Aggiorna dati pagamenti"
+                    : "Abilita pagamenti"}
+                </button>
+              </div>
+
+              <div
+                style={{
+                  marginTop: 18,
+                  display: "grid",
+                  gap: 12,
+                  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+                }}
+              >
+                <div
+                  style={{
+                    border: "1px solid rgba(255,255,255,0.12)",
+                    background: "rgba(255,255,255,0.03)",
+                    borderRadius: 16,
+                    padding: 14,
+                  }}
+                >
+                  <div className="muted" style={{ marginBottom: 6 }}>
+                    Dati inviati a Stripe
+                  </div>
+                  <b>{status?.detailsSubmitted ? "Sì" : "No"}</b>
+                </div>
+
+                <div
+                  style={{
+                    border: "1px solid rgba(255,255,255,0.12)",
+                    background: "rgba(255,255,255,0.03)",
+                    borderRadius: 16,
+                    padding: 14,
+                  }}
+                >
+                  <div className="muted" style={{ marginBottom: 6 }}>
+                    Charges abilitate
+                  </div>
+                  <b>{status?.chargesEnabled ? "Sì" : "No"}</b>
+                </div>
+
+                <div
+                  style={{
+                    border: "1px solid rgba(255,255,255,0.12)",
+                    background: "rgba(255,255,255,0.03)",
+                    borderRadius: 16,
+                    padding: 14,
+                  }}
+                >
+                  <div className="muted" style={{ marginBottom: 6 }}>
+                    Payout abilitati
+                  </div>
+                  <b>{status?.payoutsEnabled ? "Sì" : "No"}</b>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+
+      {popup.open && (
+        <AscariPopup
+          title={popup.title}
+          message={popup.message}
+          variant={popup.variant}
+          onClose={() =>
+            setPopup({ open: false, title: "", message: "", variant: "info" })
+          }
+        />
+      )}
+    </div>
+  );
+}
+
 function Layout({ children }: { children: React.ReactNode }) {
   const { isSignedIn, getToken } = useClerkAuth();
   const { openSignIn } = useClerk();
@@ -258,6 +501,16 @@ function Layout({ children }: { children: React.ReactNode }) {
         Il mio garage
       </button>
 
+      {/* {isSignedIn && (
+        <Link
+          to="/history"
+          className={mobile ? "nav-mobile-link" : ""}
+          onClick={mobile ? closeMobileMenu : undefined}
+        >
+          Storico
+        </Link>
+      )} */}
+
       {isSignedIn && (
         <SeiAltroMenu mobile={mobile} onNavigate={mobile ? closeMobileMenu : undefined} />
       )}
@@ -314,9 +567,7 @@ function Layout({ children }: { children: React.ReactNode }) {
           <div className="nav-left">
             <Link to={isInspector ? "/inspector" : "/cars"} className="brand brand-link">
               <img
-                src={
-                  theme === "dark" ? "/logos/logocut.png" : "/logos/logocut-dark.png"
-                }
+                src={theme === "dark" ? "/logos/logocut.png" : "/logos/logocut-dark.png"}
                 alt="Ascari Logo"
                 onClick={(e) => {
                   e.preventDefault();
@@ -384,9 +635,6 @@ function Layout({ children }: { children: React.ReactNode }) {
   );
 }
 
-// ===============================
-// Middleware pagine protette
-// ===============================
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { isSignedIn, isLoaded } = useClerkAuth();
   const { openSignIn } = useClerk();
@@ -401,9 +649,6 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-// ===============================
-// Redirect base (role-aware)
-// ===============================
 function HomeRedirect() {
   const { isSignedIn, isLoaded } = useClerkAuth();
   const { role, isLoaded: roleLoaded } = useRole();
@@ -418,9 +663,6 @@ function HomeRedirect() {
   return <Navigate to="/cars" replace />;
 }
 
-// ===============================
-// Routing
-// ===============================
 function AppRoutes() {
   return (
     <BrowserRouter>
@@ -442,6 +684,7 @@ function AppRoutes() {
             </Layout>
           }
         />
+
         <Route
           path="/register"
           element={
@@ -459,6 +702,7 @@ function AppRoutes() {
             </Layout>
           }
         />
+
         <Route
           path="/cars/:id"
           element={
@@ -535,6 +779,39 @@ function AppRoutes() {
         />
 
         <Route
+          path="/payments"
+          element={
+            <Layout>
+              <RequireAuth>
+                <PaymentsPage />
+              </RequireAuth>
+            </Layout>
+          }
+        />
+
+        <Route
+          path="/history"
+          element={
+            <Layout>
+              <RequireAuth>
+                <History />
+              </RequireAuth>
+            </Layout>
+          }
+        />
+
+        <Route
+          path="/history/:id"
+          element={
+            <Layout>
+              <RequireAuth>
+                <HistoryDetail />
+              </RequireAuth>
+            </Layout>
+          }
+        />
+
+        <Route
           path="/explore"
           element={
             <Layout>
@@ -564,6 +841,7 @@ function AppRoutes() {
             </Layout>
           }
         />
+
         <Route
           path="/inspector/workshop"
           element={
@@ -596,6 +874,7 @@ function AppRoutes() {
             </Layout>
           }
         />
+
         <Route
           path="/inspector/report"
           element={
@@ -606,6 +885,7 @@ function AppRoutes() {
             </Layout>
           }
         />
+
         <Route
           path="/inspector/report/:id"
           element={
@@ -616,14 +896,21 @@ function AppRoutes() {
             </Layout>
           }
         />
+        <Route
+          path="/payments/return"
+          element={
+            <Layout>
+              <RequireAuth>
+                <PaymentReturn />
+              </RequireAuth>
+            </Layout>
+          }
+        />
       </Routes>
     </BrowserRouter>
   );
 }
 
-// ===============================
-// Bootstrap React + Clerk
-// ===============================
 const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 
 if (!PUBLISHABLE_KEY) {

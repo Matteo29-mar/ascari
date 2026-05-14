@@ -2,7 +2,7 @@ import React, { useEffect } from "react";
 
 type AscariPopupProps = {
   title?: string;
-  message: string;
+  message?: string;
   variant?: "success" | "error" | "warning" | "info";
   confirmText?: string;
   cancelText?: string;
@@ -12,6 +12,8 @@ type AscariPopupProps = {
   closeOnBackdrop?: boolean;
   loading?: boolean;
   showCloseButton?: boolean;
+  maxWidth?: number;
+  children?: React.ReactNode;
 };
 
 export default function AscariPopup({
@@ -26,6 +28,8 @@ export default function AscariPopup({
   closeOnBackdrop = true,
   loading = false,
   showCloseButton = true,
+  maxWidth = 500,
+  children,
 }: AscariPopupProps) {
   const isConfirmMode = !!onConfirm;
 
@@ -130,7 +134,7 @@ export default function AscariPopup({
         onClick={(e) => e.stopPropagation()}
         style={{
           width: "100%",
-          maxWidth: 500,
+          maxWidth,
           background:
             "linear-gradient(180deg, rgba(8,18,36,0.98) 0%, rgba(9,17,29,0.98) 100%)",
           padding: "22px 22px 20px",
@@ -219,18 +223,26 @@ export default function AscariPopup({
           </div>
         </div>
 
-        <div
-          style={{
-            color: "rgba(255,255,255,0.88)",
-            margin: 0,
-            marginBottom: 22,
-            lineHeight: 1.65,
-            fontSize: 15.5,
-            whiteSpace: "pre-line",
-          }}
-        >
-          {message}
-        </div>
+        {message ? (
+          <div
+            style={{
+              color: "rgba(255,255,255,0.88)",
+              margin: 0,
+              marginBottom: children ? 16 : 22,
+              lineHeight: 1.65,
+              fontSize: 15.5,
+              whiteSpace: "pre-line",
+            }}
+          >
+            {message}
+          </div>
+        ) : null}
+
+        {children ? (
+          <div style={{ marginBottom: 22 }}>
+            {children}
+          </div>
+        ) : null}
 
         <div
           style={{

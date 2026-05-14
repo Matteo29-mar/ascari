@@ -27,7 +27,7 @@ type CarPin = {
   longitude: number;
   distanceKm: number;
   fuelType?: string | null;
-  mileage?: number | null;
+  mileageKm?: number | null;
 };
 
 const MILAN = { lat: 45.4642, lng: 9.19 };
@@ -113,10 +113,18 @@ export default function ExploreMap() {
 
       const { data } = await http.get("/cars/nearby", {
         params,
-        // headers: { Authorization: `Bearer ${token}` },
       });
 
-      setCars(Array.isArray(data) ? data : []);
+      const loadedCars = Array.isArray(data)
+        ? data
+        : Array.isArray(data?.items)
+        ? data.items
+        : [];
+
+      console.log("cars/nearby response:", data);
+      console.log("cars loaded:", loadedCars);
+
+      setCars(loadedCars);
     } catch (e) {
       console.error("Errore cars/nearby", e);
       setCars([]);
@@ -190,7 +198,7 @@ export default function ExploreMap() {
       if (brandLabel && norm(c.make) !== norm(brandLabel)) return false;
       if (model && norm(c.model) !== norm(model)) return false;
       if (fuelLabel && c.fuelType != null && norm(c.fuelType) !== norm(fuelLabel)) return false;
-      if (mileageMax !== "" && c.mileage != null && Number(c.mileage) > Number(mileageMax)) return false;
+      if (mileageMax !== "" && c.mileageKm != null && Number(c.mileageKm) > Number(mileageMax)) return false;
       return true;
     });
   }, [cars, makeKey, model, fuelKey, mileageMax]);

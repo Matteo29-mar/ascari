@@ -1,5 +1,5 @@
 // frontend/src/pages/Cars.tsx
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
 import { http, ping } from "../api";
@@ -21,6 +21,11 @@ type Car = {
   coverUrl?: string | null;
   likedByMe?: boolean;
   owner?: { clerkId: string };
+  paymentStatus?: string | null;
+  marketStatus?: "AVAILABLE" | "SOLD_PENDING_REMOVAL" | "REMOVED_AFTER_SALE";
+  soldAt?: string | null;
+  removalScheduledAt?: string | null;
+  visuallyRemovedAt?: string | null;
 };
 
 type PaginatedCarsResponse = {
@@ -34,6 +39,14 @@ type PaginatedCarsResponse = {
 type SearchFilters = {
   brands: string[];
   models: string[];
+  fuelTypes: string[];
+  transmissions: string[];
+  yearMin?: number;
+  yearMax?: number;
+  mileageMin?: number;
+  mileageMax?: number;
+  horsepowerMin?: number;
+  horsepowerMax?: number;
 };
 
 type ViewMode = "all" | "search" | "filter" | "nearby";
@@ -106,6 +119,7 @@ function draftToPayload(d: DraftCar) {
     title: (d as any).title ?? `${d.make} ${d.model}`,
     year: toNum((d as any).year),
     fuelType: (d as any).fuelType ?? undefined,
+    transmission: (d as any).transmission ?? undefined,
     horsepower: toNum((d as any).horsepower),
     mileageKm: toNum((d as any).mileageKm),
     photos: (d as any).photos ?? undefined,
@@ -118,6 +132,15 @@ function draftToPayload(d: DraftCar) {
   return stripUndefined(payload);
 }
 
+function isCatalogAvailable(car: any) {
+  return (
+    (!car.marketStatus || car.marketStatus === "AVAILABLE") &&
+    car.paymentStatus !== "SOLD" &&
+    !car.soldAt &&
+    !car.visuallyRemovedAt
+  );
+}
+
 export default function Cars() {
   const [list, setList] = useState<Car[]>([]);
   const [q, setQ] = useState("");
@@ -125,6 +148,9 @@ export default function Cars() {
   const [pos, setPos] = useState<{ lat: number; lon: number } | null>(null);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const latestRequestRef = useRef(0);
+  const didInitialLoadRef = useRef(false);
+  const didDraftSyncRef = useRef(false);
   const nav = useNavigate();
   const [drafts, setDrafts] = useState<DraftCar[]>([]);
 
@@ -134,7 +160,12 @@ export default function Cars() {
   const [totalPages, setTotalPages] = useState(1);
 
   const [viewMode, setViewMode] = useState<ViewMode>("all");
-  const [activeFilters, setActiveFilters] = useState<SearchFilters>({ brands: [], models: [] });
+  const [activeFilters, setActiveFilters] = useState<SearchFilters>({
+    brands: [],
+    models: [],
+    fuelTypes: [],
+    transmissions: [],
+  });
 
   const { userId: clerkUserId, isSignedIn, isLoaded, getToken } = useAuth();
   const { openSignIn } = useClerk();
@@ -144,38 +175,52 @@ export default function Cars() {
     return token ? { Authorization: `Bearer ${token}` } : {};
   }
 
-  function applyCarsResponse(payload: any) {
-    const normalized = normalizeCarsResponse(payload);
-    setList(normalized.items);
-    setTotal(normalized.total);
-    setPage(normalized.page);
-    setTotalPages(normalized.totalPages);
-  }
+function applyCarsResponse(payload: any) {
+  const normalized = normalizeCarsResponse(payload);
+  const visibleItems = normalized.items.filter(isCatalogAvailable);
 
-  async function loadAll(nextPage = page, nextPageSize = pageSize) {
-    setErr(null);
-    setLoading(true);
+  setList(visibleItems);
 
-    try {
-      const headers = await getAuthHeaders();
+  setTotal(normalized.total);
+  setPage(normalized.page);
+  setTotalPages(normalized.totalPages);
+}
+
+async function loadAll(nextPage = page, nextPageSize = pageSize) {
+  const requestId = ++latestRequestRef.current;
+
+  setErr(null);
+  setLoading(true);
+
+  try {
+          const token = isSignedIn ? await getToken() : null;
+
       const res = await http.get("/cars", {
         params: { page: nextPage, pageSize: nextPageSize },
-        headers,
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
 
-      applyCarsResponse(res.data);
-      setViewMode("all");
-    } catch (e: any) {
-      console.error("Errore loadAll", e);
-      console.error("Backend response:", e?.response?.data);
-      setErr(e?.response?.data?.error || e?.message || "Errore caricamento auto");
-      setList([]);
-      setTotal(0);
-      setTotalPages(1);
-    } finally {
+    // Se nel frattempo è partita un'altra richiesta, ignoro questa risposta vecchia.
+    if (requestId !== latestRequestRef.current) return;
+
+    applyCarsResponse(res.data);
+    setViewMode("all");
+  } catch (e: any) {
+    if (requestId !== latestRequestRef.current) return;
+
+    console.error("Errore loadAll", e);
+    console.error("Backend response:", e?.response?.data);
+
+    setErr(e?.response?.data?.error || e?.message || "Errore caricamento auto");
+    setList([]);
+    setTotal(0);
+    setTotalPages(1);
+  } finally {
+    if (requestId === latestRequestRef.current) {
       setLoading(false);
     }
   }
+}
 
   async function runSearch(nextPage = page, nextPageSize = pageSize, nextQuery = q) {
     setErr(null);
@@ -222,13 +267,25 @@ export default function Cars() {
     try {
       const headers = await getAuthHeaders();
 
+      const params = stripUndefined({
+        brands: filters.brands.length ? filters.brands.join(",") : undefined,
+        models: filters.models.length ? filters.models.join(",") : undefined,
+        fuelTypes: filters.fuelTypes.length ? filters.fuelTypes.join(",") : undefined,
+        transmissions: filters.transmissions.length
+          ? filters.transmissions.join(",")
+          : undefined,
+        yearMin: filters.yearMin,
+        yearMax: filters.yearMax,
+        mileageMin: filters.mileageMin,
+        mileageMax: filters.mileageMax,
+        horsepowerMin: filters.horsepowerMin,
+        horsepowerMax: filters.horsepowerMax,
+        page: nextPage,
+        pageSize: nextPageSize,
+      });
+
       const res = await http.get("/cars/filter", {
-        params: {
-          brands: filters.brands.join(","),
-          models: filters.models.join(","),
-          page: nextPage,
-          pageSize: nextPageSize,
-        },
+        params,
         headers,
       });
 
@@ -247,7 +304,12 @@ export default function Cars() {
     }
   }
 
-  async function runNearby(nextPage = page, nextPageSize = pageSize, nextPos = pos, nextRadius = radius) {
+  async function runNearby(
+    nextPage = page,
+    nextPageSize = pageSize,
+    nextPos = pos,
+    nextRadius = radius
+  ) {
     setErr(null);
 
     if (!nextPos) {
@@ -305,25 +367,76 @@ export default function Cars() {
 
   useEffect(() => {
     if (!isLoaded) return;
-    loadAll(1, pageSize);
+    if (didInitialLoadRef.current) return;
+
+    didInitialLoadRef.current = true;
+
     setDrafts(loadDrafts());
+    loadAll(1, pageSize);
+
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoaded]);
 
   useEffect(() => {
+    if (!isLoaded) return;
+
+    let timer: number | null = null;
+
+    const reloadSoftly = () => {
+      if (timer) {
+        window.clearTimeout(timer);
+      }
+
+      timer = window.setTimeout(() => {
+        reloadCurrentView(page, pageSize);
+      }, 600);
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        reloadSoftly();
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      if (timer) {
+        window.clearTimeout(timer);
+      }
+
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoaded, page, pageSize]);
+
+  useEffect(() => {
     if (!isLoaded || !isSignedIn) return;
+    if (didDraftSyncRef.current) return;
+
+    didDraftSyncRef.current = true;
 
     (async () => {
       try {
+        const local = loadDrafts();
+
+        if (!local.length) {
+          setDrafts([]);
+          return;
+        }
+
         await ping();
 
-        const local = loadDrafts();
-        if (!local.length) return;
-
         const token = await getToken();
-        if (!token) return;
+
+        if (!token) {
+          setDrafts(local);
+          return;
+        }
 
         const failed: { id: string; reason: any }[] = [];
+        let syncedCount = 0;
 
         for (const d of local) {
           try {
@@ -334,15 +447,24 @@ export default function Cars() {
             });
 
             removeDraft(d.id);
+            syncedCount += 1;
           } catch (e: any) {
             console.error("Sync bozza fallita:", d.id, e);
             console.error("Backend response:", e?.response?.data);
-            failed.push({ id: d.id, reason: e?.response?.data || e?.message || e });
+
+            failed.push({
+              id: d.id,
+              reason: e?.response?.data || e?.message || e,
+            });
           }
         }
 
-        setDrafts(loadDrafts());
-        await reloadCurrentView(1, pageSize);
+        const remainingDrafts = loadDrafts();
+        setDrafts(remainingDrafts);
+
+        if (syncedCount > 0) {
+          await loadAll(1, pageSize);
+        }
 
         if (failed.length) {
           setErr(
@@ -354,6 +476,7 @@ export default function Cars() {
         console.error("Backend response:", e?.response?.data);
       }
     })();
+
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoaded, isSignedIn]);
 
@@ -402,7 +525,12 @@ export default function Cars() {
   async function resetAll() {
     setQ("");
     setPos(null);
-    setActiveFilters({ brands: [], models: [] });
+    setActiveFilters({
+      brands: [],
+      models: [],
+      fuelTypes: [],
+      transmissions: [],
+    });
     setViewMode("all");
     setPage(1);
     await loadAll(1, pageSize);
@@ -554,7 +682,9 @@ export default function Cars() {
 
       <p className="muted cars-results-meta">
         <span>
-          {resultsTitle} — <b>{total}</b> veicolo/i
+          {resultsTitle} —{" "}
+          <b>{loading ? "caricamento..." : total}</b>{" "}
+          {loading ? "" : "veicolo/i"}
         </span>
 
         {total > 0 && (

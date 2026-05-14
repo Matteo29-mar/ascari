@@ -7,6 +7,12 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum CarMarketStatus {
+  AVAILABLE
+  SOLD_PENDING_REMOVAL
+  REMOVED_AFTER_SALE
+}
+
 model User {
   id        String   @id @default(cuid())
   clerkId   String   @unique
@@ -15,26 +21,34 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  stripeAccountId             String?   @unique
+  stripeAccountStatus         String    @default("NOT_STARTED")
+  stripeChargesEnabled        Boolean   @default(false)
+  stripePayoutsEnabled        Boolean   @default(false)
+  stripeDetailsSubmitted      Boolean   @default(false)
+  stripeOnboardingCompletedAt DateTime?
+  paymentsEnabledAt           DateTime?
+
   cars  Car[]
   likes Like[]
 
-  // OFFERTE
   buyerOffers  Offer[]   @relation("BuyerOffers")
   sellerOffers Offer[]   @relation("SellerOffers")
   messages     Message[]
 
-  // ✅ CHAT (generiche: possono essere da offerta o da perizia)
   buyerChats  Chat[] @relation("BuyerChats")
   sellerChats Chat[] @relation("SellerChats")
 
-  // ✅ PERIZIATORE
   inspectorProfile InspectorProfile?
 
-  // ✅ Richieste perizia create come venditore
   sellerInspectionRequests InspectionRequest[] @relation("SellerInspectionRequests")
+  inspectionReports        InspectionReport[]
 
-  // ✅ RESOCONTI creati dal periziatore come utente
-  inspectionReports InspectionReport[]
+  buyerPayments  Payment[] @relation("BuyerPayments")
+  sellerPayments Payment[] @relation("SellerPayments")
+
+  buyerSaleHistories  SaleHistory[] @relation("BuyerSaleHistories")
+  sellerSaleHistories SaleHistory[] @relation("SellerSaleHistories")
 }
 
 model InspectorProfile {
@@ -47,25 +61,20 @@ model InspectorProfile {
   email           String
   phone           String
 
-  // posizione officina
   city      String?
   latitude  Float?
   longitude Float?
 
-  // raggio operativo
   radiusKm Int @default(70)
 
-  // orario lavorativo base (minuti da mezzanotte)
-  workStartMin Int @default(540) // 09:00
-  workEndMin   Int @default(1080) // 18:00
+  workStartMin Int @default(540)
+  workEndMin   Int @default(1080)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // disponibilità (slot)
   slots InspectorSlot[]
 
-  // richieste ricevute
   requests               InspectionRequest[]
   calendarConfirmedColor String              @default("#22c55e")
 
@@ -84,7 +93,6 @@ model InspectorSlot {
 
   createdAt DateTime @default(now())
 
-  // ✅ richieste che hanno occupato questo slot
   requests InspectionRequest[]
 
   @@index([inspectorId, startAt])
@@ -97,19 +105,15 @@ model InspectionRequest {
   carId Int
   car   Car @relation(fields: [carId], references: [id], onDelete: Cascade)
 
-  // venditore che richiede la perizia
   sellerId String
   seller   User   @relation("SellerInspectionRequests", fields: [sellerId], references: [id])
 
-  // periziatore matchato
   inspectorId String
   inspector   InspectorProfile @relation(fields: [inspectorId], references: [id], onDelete: Cascade)
 
-  // ✅ intervallo richiesto / assegnato
   startAt DateTime
   endAt   DateTime
 
-  // ✅ slot occupato (quello del periziatore)
   inspectorSlotId Int
   inspectorSlot   InspectorSlot @relation(fields: [inspectorSlotId], references: [id], onDelete: Cascade)
 
@@ -118,10 +122,8 @@ model InspectionRequest {
 
   notes String?
 
-  // ✅ chat dedicata a questa perizia (1:1 opzionale)
   chat Chat? @relation("InspectionChat")
 
-  // ✅ resoconto finale della perizia
   report InspectionReport?
 
   createdAt DateTime @default(now())
@@ -140,15 +142,15 @@ model Car {
   title String
   year  Int
 
-  offerPrice1 Int?
-  offerPrice2 Int?
-  offerPrice3 Int?
+  offerPrice1 Int
+  offerPrice2 Int
+  offerPrice3 Int
 
   trimLevel    String?
   priceEur     Int?
   color        String?
-  transmission String?
-  fuelType     String?
+  transmission String
+  fuelType     String
   engine       String?
   horsepower   Int?
   torqueNm     Int?
@@ -160,15 +162,32 @@ model Car {
   photos       String[]
   coverUrl     String?
 
-  // ✅ PERIZIA
   isPeriziata       Boolean   @default(false)
   periziaDocUrl     String?
   periziaUploadedAt DateTime?
 
+  paymentEnabled      Boolean   @default(false)
+  salePriceEur        Int?
+  ascariFeeEur        Int?
+  sellerNetEur        Int?
+  paymentStatus       String    @default("NOT_CONFIGURED")
+  paymentConfiguredAt DateTime?
+
+  marketStatus            CarMarketStatus @default(AVAILABLE)
+  soldAt                  DateTime?
+  removalScheduledAt      DateTime?
+  visuallyRemovedAt       DateTime?
+  soldByPaymentId         Int?
+  soldBySaleHistoryId     Int?
+
+  payments Payment[]
+
+  saleHistories SaleHistory[]
+
   offers Offer[] @relation("CarOffers")
 
-  locationText String?
-  city         String?
+  locationText String
+  city         String
   country      String?
 
   latitude  Float?
@@ -182,15 +201,17 @@ model Car {
 
   likes Like[]
 
-  // ✅ richieste perizia
   inspectionRequests InspectionRequest[]
 
-  // ✅ archivio resoconti legati all’auto
   inspectionReports InspectionReport[]
 
   @@index([make, model])
   @@index([latitude, longitude])
   @@index([ownerId])
+  @@index([paymentEnabled])
+  @@index([marketStatus])
+  @@index([removalScheduledAt])
+  @@index([visuallyRemovedAt])
 }
 
 model InspectionReport {
@@ -256,7 +277,6 @@ model Offer {
   seller User @relation("SellerOffers", fields: [sellerId], references: [id])
   car    Car  @relation("CarOffers", fields: [carId], references: [id])
 
-  // ✅ chat 1:1 per offerta
   chat Chat? @relation("OfferChat")
 }
 
@@ -264,17 +284,14 @@ model Chat {
   id        Int      @id @default(autoincrement())
   createdAt DateTime @default(now())
 
-  // ✅ partecipanti (sempre presenti)
   buyerId  String
   sellerId String
   buyer    User   @relation("BuyerChats", fields: [buyerId], references: [id])
   seller   User   @relation("SellerChats", fields: [sellerId], references: [id])
 
-  // ✅ chat da OFFERTA (opzionale)
   offerId Int?
   offer   Offer? @relation("OfferChat", fields: [offerId], references: [id])
 
-  // ✅ chat da PERIZIA (opzionale)
   inspectionRequestId Int?
   inspectionRequest   InspectionRequest? @relation("InspectionChat", fields: [inspectionRequestId], references: [id], onDelete: Cascade)
 
@@ -297,6 +314,77 @@ model Message {
 
   senderId String
   sender   User   @relation(fields: [senderId], references: [id])
+}
+
+model Payment {
+  id Int @id @default(autoincrement())
+
+  carId Int
+  car   Car @relation(fields: [carId], references: [id], onDelete: Cascade)
+
+  buyerId String
+  buyer   User   @relation("BuyerPayments", fields: [buyerId], references: [id])
+
+  sellerId String
+  seller   User   @relation("SellerPayments", fields: [sellerId], references: [id])
+
+  stripePaymentIntentId  String  @unique
+  stripeClientSecret     String?
+  stripeChargeId         String?
+  stripeTransferId       String?
+  stripeApplicationFeeId String?
+
+  amountEur    Int
+  ascariFeeEur Int
+  sellerNetEur Int
+  currency     String @default("eur")
+
+  status     String    @default("CREATED")
+  paidAt     DateTime?
+  refundedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([carId, createdAt])
+  @@index([buyerId, createdAt])
+  @@index([sellerId, createdAt])
+  @@index([status])
+}
+
+model SaleHistory {
+  id Int @id @default(autoincrement())
+
+  carId Int?
+  car   Car? @relation(fields: [carId], references: [id], onDelete: SetNull)
+
+  buyerId String
+  buyer   User   @relation("BuyerSaleHistories", fields: [buyerId], references: [id])
+
+  sellerId String
+  seller   User   @relation("SellerSaleHistories", fields: [sellerId], references: [id])
+
+  paymentId Int? @unique
+
+  amountEur    Int
+  ascariFeeEur Int?
+  sellerNetEur Int?
+
+  currency String @default("eur")
+
+  carSnapshot        Json
+  inspectionSnapshot Json?
+
+  stripePaymentIntentId String?
+  stripeChargeId        String?
+
+  soldAt    DateTime @default(now())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([buyerId, soldAt])
+  @@index([sellerId, soldAt])
+  @@index([carId])
 }
 
 enum InspectionStatus {

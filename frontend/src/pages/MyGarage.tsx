@@ -5,8 +5,12 @@ import {
   SignedOut,
   RedirectToSignIn,
 } from "@clerk/clerk-react";
-import { getMyGarage } from "../api";
-import { Link } from "react-router-dom";
+import {
+  getMyGarage,
+  getStripeAccountStatus,
+  createStripeOnboardingLink,
+} from "../api";
+import { Link, useNavigate } from "react-router-dom";
 import LikeButton from "../components/LikeButton";
 import { http } from "../api";
 import AscariPopup from "../components/AscariPopup";
@@ -27,6 +31,17 @@ type Car = {
   periziaDocUrl?: string | null;
 
   city?: string | null;
+
+  paymentEnabled?: boolean;
+  salePriceEur?: number | null;
+  ascariFeeEur?: number | null;
+  sellerNetEur?: number | null;
+
+  marketStatus?: "AVAILABLE" | "SOLD_PENDING_REMOVAL" | "REMOVED_AFTER_SALE";
+  soldAt?: string | null;
+  removalScheduledAt?: string | null;
+  visuallyRemovedAt?: string | null;
+  paymentStatus?: string | null;
 };
 
 type MyGarageResponse = {
@@ -37,7 +52,7 @@ type MyGarageResponse = {
 type PopupState = {
   open: boolean;
   title?: string;
-  message: string;
+  message?: string;
   variant?: "success" | "error" | "warning" | "info";
   confirmText?: string;
   cancelText?: string;
@@ -51,6 +66,15 @@ type MatchSuggestion = {
   inspectorCity: string | null;
   startAt: string;
   endAt: string;
+};
+
+type StripeAccountStatus = {
+  accountId?: string | null;
+  status: "NOT_STARTED" | "PENDING" | "ENABLED";
+  chargesEnabled: boolean;
+  payoutsEnabled: boolean;
+  detailsSubmitted: boolean;
+  onboardingCompleted: boolean;
 };
 
 function BadgePerizia({ ok }: { ok: boolean }) {
@@ -82,6 +106,88 @@ function BadgePerizia({ ok }: { ok: boolean }) {
         }}
       />
       Periziata: {ok ? "SI" : "NO"}
+    </span>
+  );
+}
+
+function PaymentBadge({ enabled }: { enabled: boolean }) {
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 8,
+        padding: "6px 10px",
+        borderRadius: 999,
+        fontWeight: 800,
+        fontSize: 12,
+        border: enabled
+          ? "1px solid rgba(105,210,255,0.30)"
+          : "1px solid rgba(148,163,184,0.30)",
+        background: enabled
+          ? "rgba(105,210,255,0.14)"
+          : "rgba(148,163,184,0.12)",
+        color: enabled ? "#bfefff" : "#cbd5e1",
+      }}
+      title={enabled ? "Pagamento configurato" : "Pagamento non configurato"}
+    >
+      <span
+        style={{
+          width: 8,
+          height: 8,
+          borderRadius: "50%",
+          background: enabled ? "#69d2ff" : "#94a3b8",
+          display: "inline-block",
+        }}
+      />
+      Pagamento: {enabled ? "SI" : "NO"}
+    </span>
+  );
+}
+
+function SaleStatusBadge({ car }: { car: Car }) {
+  const isSold =
+    car.marketStatus === "SOLD_PENDING_REMOVAL" ||
+    car.marketStatus === "REMOVED_AFTER_SALE" ||
+    car.paymentStatus === "SOLD";
+
+  if (!isSold) return null;
+
+  const removalDate = car.removalScheduledAt
+    ? new Date(car.removalScheduledAt)
+    : null;
+
+  const removalText =
+    removalDate && !Number.isNaN(removalDate.getTime())
+      ? `Rimozione automatica: ${removalDate.toLocaleDateString("it-IT")}`
+      : "Rimozione a breve";
+
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 8,
+        padding: "6px 10px",
+        borderRadius: 999,
+        fontWeight: 900,
+        fontSize: 12,
+        border: "1px solid rgba(251,191,36,0.45)",
+        background: "rgba(251,191,36,0.14)",
+        color: "#fde68a",
+      }}
+      title={removalText}
+    >
+      <span
+        style={{
+          width: 8,
+          height: 8,
+          borderRadius: "50%",
+          background: "#fbbf24",
+          display: "inline-block",
+        }}
+      />
+      Venduta · rimozione a breve
     </span>
   );
 }
@@ -135,8 +241,18 @@ function formatTimeLocal(v?: string | null) {
   });
 }
 
+function formatEuro(value?: number | null) {
+  const n = Number(value ?? 0);
+  return new Intl.NumberFormat("it-IT", {
+    style: "currency",
+    currency: "EUR",
+    maximumFractionDigits: 0,
+  }).format(Number.isFinite(n) ? n : 0);
+}
+
 function MyGarageContent() {
   const { getToken } = useAuth();
+  const nav = useNavigate();
 
   const [data, setData] = useState<MyGarageResponse>({
     myCars: [],
@@ -160,6 +276,9 @@ function MyGarageContent() {
   const [pendingSuggestion, setPendingSuggestion] =
     useState<MatchSuggestion | null>(null);
 
+  const [stripeStatus, setStripeStatus] = useState<StripeAccountStatus | null>(null);
+  const [stripeBusy, setStripeBusy] = useState(false);
+
   const [popup, setPopup] = useState<PopupState>({
     open: false,
     message: "",
@@ -178,6 +297,18 @@ function MyGarageContent() {
     });
   }
 
+  async function loadStripeStatus() {
+    try {
+      const token = await getToken();
+      if (!token) return;
+
+      const status = await getStripeAccountStatus(token);
+      setStripeStatus(status);
+    } catch (e) {
+      console.error("Errore stato Stripe:", e);
+    }
+  }
+
   async function loadGarage() {
     setLoading(true);
     try {
@@ -193,6 +324,7 @@ function MyGarageContent() {
       const res = await getMyGarage(token);
       const normalized = normalizeGarage(res);
       setData(normalized);
+      await loadStripeStatus();
     } catch (e: any) {
       console.error("Errore caricamento garage:", e);
       setError(e?.message || "Errore caricamento garage");
@@ -204,8 +336,43 @@ function MyGarageContent() {
 
   useEffect(() => {
     loadGarage();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  async function handleEnablePayments() {
+    try {
+      const token = await getToken();
+      if (!token) {
+        openPopup({
+          open: true,
+          title: "Accesso richiesto",
+          message: "Devi essere loggato per abilitare i pagamenti.",
+          variant: "warning",
+        });
+        return;
+      }
+
+      setStripeBusy(true);
+      const data = await createStripeOnboardingLink(token);
+
+      if (!data?.url) {
+        throw new Error("Link onboarding Stripe non disponibile");
+      }
+
+      window.location.href = data.url;
+    } catch (e: any) {
+      openPopup({
+        open: true,
+        title: "Errore Stripe",
+        message:
+          e?.response?.data?.error ||
+          e?.message ||
+          "Impossibile avviare l’onboarding Stripe.",
+        variant: "error",
+      });
+    } finally {
+      setStripeBusy(false);
+    }
+  }
 
   async function uploadPerizia(carId: number, file: File) {
     try {
@@ -292,9 +459,7 @@ function MyGarageContent() {
       );
 
       if (!data?.ok || !data?.match) {
-        throw new Error(
-          data?.error || "Impossibile confermare la proposta"
-        );
+        throw new Error(data?.error || "Impossibile confermare la proposta");
       }
 
       setPendingSuggestion(null);
@@ -436,6 +601,13 @@ function MyGarageContent() {
   const myCars = Array.isArray(data.myCars) ? data.myCars : [];
   const likedCars = Array.isArray(data.likedCars) ? data.likedCars : [];
 
+  const stripeBadge = (() => {
+    if (!stripeStatus) return { text: "Non disponibile", color: "#94a3b8" };
+    if (stripeStatus.status === "ENABLED") return { text: "Abilitato", color: "#34d399" };
+    if (stripeStatus.status === "PENDING") return { text: "In verifica", color: "#fbbf24" };
+    return { text: "Non configurato", color: "#94a3b8" };
+  })();
+
   return (
     <div style={{ padding: "2rem 1rem" }}>
       {popup.open && (
@@ -452,6 +624,66 @@ function MyGarageContent() {
       )}
 
       <h1 style={{ marginBottom: "1.5rem" }}>Il mio garage</h1>
+
+      <section className="card" style={{ marginBottom: "2rem" }}>
+        <div className="card-body">
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              gap: 16,
+              alignItems: "center",
+              flexWrap: "wrap",
+            }}
+          >
+            <div>
+              <h2 style={{ margin: 0 }}>Pagamenti Stripe</h2>
+              <p className="muted" style={{ marginTop: 8, marginBottom: 0, lineHeight: 1.6 }}>
+                Collega il tuo account Stripe per ricevere i soldi delle vendite su Ascari.
+              </p>
+            </div>
+
+            <button
+              className="btn"
+              type="button"
+              onClick={handleEnablePayments}
+              disabled={stripeBusy}
+              style={{ minWidth: 220 }}
+            >
+              {stripeBusy
+                ? "Attendere..."
+                : stripeStatus?.status === "ENABLED"
+                ? "Aggiorna dati pagamenti"
+                : "Abilita pagamenti"}
+            </button>
+          </div>
+
+          <div
+            style={{
+              marginTop: 16,
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 8,
+              padding: "8px 12px",
+              borderRadius: 999,
+              border: `1px solid ${stripeBadge.color}55`,
+              background: `${stripeBadge.color}22`,
+              color: stripeBadge.color,
+              fontWeight: 800,
+            }}
+          >
+            <span
+              style={{
+                width: 8,
+                height: 8,
+                borderRadius: "50%",
+                background: stripeBadge.color,
+              }}
+            />
+            Stato pagamenti: {stripeBadge.text}
+          </div>
+        </div>
+      </section>
 
       <section>
         <h2>Le mie auto</h2>
@@ -477,15 +709,35 @@ function MyGarageContent() {
                       justifyContent: "space-between",
                       gap: 10,
                       alignItems: "center",
+                      flexWrap: "wrap",
                     }}
                   >
                     <h3 style={{ margin: 0 }}>{car.title}</h3>
-                    <BadgePerizia ok={periziata} />
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      <SaleStatusBadge car={car} />
+                      <BadgePerizia ok={periziata} />
+                      <PaymentBadge enabled={!!car.paymentEnabled} />
+                    </div>
                   </div>
 
                   <p>
                     {car.make} {car.model} ({car.year})
                   </p>
+
+                  {car.paymentEnabled && (
+                    <div
+                      style={{
+                        marginTop: 10,
+                        display: "grid",
+                        gap: 10,
+                        gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
+                      }}
+                    >
+                      <MiniValue label="Prezzo vendita" value={formatEuro(car.salePriceEur)} />
+                      <MiniValue label="Commissione Ascari" value={formatEuro(car.ascariFeeEur)} />
+                      <MiniValue label="Netto venditore" value={formatEuro(car.sellerNetEur)} />
+                    </div>
+                  )}
 
                   {!periziata && (
                     <div style={{ marginTop: 10 }}>
@@ -556,10 +808,38 @@ function MyGarageContent() {
                     </div>
                   )}
 
-                  <div className="card-actions" style={{ marginTop: 14 }}>
+                  <div
+                    className="card-actions"
+                    style={{
+                      marginTop: 14,
+                      display: "flex",
+                      gap: 10,
+                      flexWrap: "wrap",
+                    }}
+                  >
                     <Link className="btn" to={`/cars/${car.id}`}>
                       Dettaglio modello
                     </Link>
+
+                    {car.marketStatus === "SOLD_PENDING_REMOVAL" ||
+                    car.marketStatus === "REMOVED_AFTER_SALE" ||
+                    car.paymentStatus === "SOLD" ? (
+                      <button
+                        className="btn secondary"
+                        type="button"
+                        onClick={() => nav(`/history`)}
+                      >
+                        Vai allo storico
+                      </button>
+                    ) : (
+                      <button
+                        className="btn secondary"
+                        type="button"
+                        onClick={() => nav(`/cars/${car.id}`)}
+                      >
+                        Configura pagamento
+                      </button>
+                    )}
 
                     <LikeButton
                       carId={car.id}
@@ -597,7 +877,6 @@ function MyGarageContent() {
 
                   <div className="card-actions">
                     <LikeButton carId={car.id} initialLiked={true} />
-
                     <Link className="btn" to={`/cars/${car.id}`}>
                       Dettaglio modello
                     </Link>
@@ -755,6 +1034,24 @@ function MyGarageContent() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function MiniValue({ label, value }: { label: string; value: string }) {
+  return (
+    <div
+      style={{
+        border: "1px solid rgba(255,255,255,0.10)",
+        background: "rgba(255,255,255,0.03)",
+        borderRadius: 14,
+        padding: 12,
+      }}
+    >
+      <div className="muted" style={{ marginBottom: 6 }}>
+        {label}
+      </div>
+      <b>{value}</b>
     </div>
   );
 }
