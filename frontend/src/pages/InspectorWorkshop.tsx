@@ -1,3 +1,4 @@
+// frontend/src/pages/InspectorWorkshop.tsx
 import React, { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@clerk/clerk-react";
 import { http } from "../api";
@@ -56,6 +57,15 @@ function minutesToHHMM(m: number) {
 function hhmmToMinutes(v: string) {
   const [hh, mm] = v.split(":").map((x) => Number(x));
   return hh * 60 + mm;
+}
+
+function formatDateTime(value: string) {
+  return new Date(value).toLocaleString("it-IT", {
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 const COLOR_PALETTE = [
@@ -219,6 +229,13 @@ export default function InspectorWorkshop() {
     setSaving(true);
 
     try {
+      const startMin = hhmmToMinutes(workStart);
+      const endMin = hhmmToMinutes(workEnd);
+
+      if (endMin <= startMin) {
+        throw new Error("L'orario di fine deve essere maggiore dell'orario di inizio.");
+      }
+
       const headers = await authHeaders();
 
       const payload = {
@@ -228,8 +245,8 @@ export default function InspectorWorkshop() {
         phone,
         city: city || null,
         radiusKm: Number(radiusKm),
-        workStartMin: hhmmToMinutes(workStart),
-        workEndMin: hhmmToMinutes(workEnd),
+        workStartMin: startMin,
+        workEndMin: endMin,
         calendarConfirmedColor: confirmedColor,
       };
 
@@ -343,11 +360,21 @@ export default function InspectorWorkshop() {
     );
   }, [slots]);
 
+  const availableSlots = useMemo(() => {
+    return sortedSlots.filter((s) => s.isAvailable);
+  }, [sortedSlots]);
+
+  const occupiedSlots = useMemo(() => {
+    return sortedSlots.filter((s) => !s.isAvailable);
+  }, [sortedSlots]);
+
   const confirmedAppointments = useMemo(() => {
     return (requests ?? [])
       .filter((r) => r.status === "CONFIRMED")
       .sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime());
   }, [requests]);
+
+  const nextAppointment = confirmedAppointments[0];
 
   const events = useMemo(() => {
     const slotEvents = sortedSlots.map((s) => ({
@@ -355,17 +382,18 @@ export default function InspectorWorkshop() {
       title: s.isAvailable ? "Disponibile" : "Occupato",
       start: s.startAt,
       end: s.endAt,
-      backgroundColor: "rgba(34,197,94,0.18)",
-      borderColor: "rgba(34,197,94,0.35)",
-      textColor: "#b8ffe9",
+      backgroundColor: s.isAvailable ? "rgba(78,242,200,0.16)" : "rgba(255,255,255,0.08)",
+      borderColor: s.isAvailable ? "rgba(78,242,200,0.45)" : "rgba(255,255,255,0.16)",
+      textColor: s.isAvailable ? "#b8fff1" : "#d4d9e2",
       extendedProps: { kind: "SLOT", slotId: s.id, isAvailable: s.isAvailable },
     }));
 
     const appointmentEvents = confirmedAppointments.map((r) => {
       const carTitle = r.car?.title || `${r.car?.make ?? ""} ${r.car?.model ?? ""}`.trim();
+
       return {
         id: `appt-${r.id}`,
-        title: carTitle ? `Appuntamento • ${carTitle}` : "Appuntamento",
+        title: carTitle ? `Perizia • ${carTitle}` : "Perizia confermata",
         start: r.startAt,
         end: r.endAt,
         backgroundColor: confirmedColor,
@@ -378,128 +406,287 @@ export default function InspectorWorkshop() {
     return [...slotEvents, ...appointmentEvents];
   }, [sortedSlots, confirmedAppointments, confirmedColor]);
 
-  if (loading) return <div style={{ paddingTop: 18 }}>Loading…</div>;
+  if (loading) {
+    return (
+      <div className="inspector-workshop-page">
+        <div className="inspector-workshop-loading">
+          <div className="inspector-workshop-loader" />
+          <div>
+            <strong>Caricamento officina</strong>
+            <span>Sto preparando calendario e disponibilità...</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <>
-      <div style={{ paddingTop: 18, maxWidth: 980 }}>
-        <h1>Mia officina</h1>
-        <p>Gestisci dati, raggio operativo e disponibilità.</p>
+      <main className="inspector-workshop-page">
+        <div className="inspector-workshop-bg inspector-workshop-bg-one" />
+        <div className="inspector-workshop-bg inspector-workshop-bg-two" />
+
+        <section className="inspector-workshop-hero">
+          <div>
+            <div className="inspector-workshop-kicker">
+              <span />
+              AREA PERIZIATORE
+            </div>
+
+            <h1>Mia officina</h1>
+
+            <p>
+              Gestisci i dati della tua officina, il raggio operativo e le disponibilità
+              per ricevere nuove richieste di perizia su Ascari.
+            </p>
+          </div>
+
+          <div className="inspector-workshop-hero-card">
+            <span>Stato profilo</span>
+            <strong>{profile ? "Officina attiva" : "Profilo non configurato"}</strong>
+            <p>
+              {profile
+                ? "Il tuo profilo è visibile nel sistema di matching Ascari."
+                : "Completa i dati per rendere operativa la tua officina."}
+            </p>
+          </div>
+        </section>
 
         {err && (
-          <div style={{ color: "var(--danger)", marginTop: 10, marginBottom: 10 }}>
-            {err}
+          <div className="inspector-workshop-alert">
+            <strong>Attenzione</strong>
+            <span>{err}</span>
           </div>
         )}
 
-        <div className="panel" style={{ padding: 16, marginTop: 14 }}>
-          <h2 style={{ marginTop: 0 }}>Dati officina</h2>
+        <section className="inspector-workshop-stats">
+          <div className="inspector-workshop-stat">
+            <span>Slot disponibili</span>
+            <strong>{availableSlots.length}</strong>
+            <p>Fasce orarie aperte</p>
+          </div>
 
-          <div style={{ display: "grid", gap: 12, gridTemplateColumns: "1fr 1fr" }}>
-            <label>
-              Nome officina
-              <input value={workshopName} onChange={(e) => setWorkshopName(e.target.value)} />
-            </label>
+          <div className="inspector-workshop-stat">
+            <span>Appuntamenti</span>
+            <strong>{confirmedAppointments.length}</strong>
+            <p>Perizie confermate</p>
+          </div>
 
-            <label>
-              Città
-              <input value={city} onChange={(e) => setCity(e.target.value)} />
-            </label>
+          <div className="inspector-workshop-stat">
+            <span>Raggio operativo</span>
+            <strong>{radiusKm} km</strong>
+            <p>Copertura territoriale</p>
+          </div>
 
-            <label>
-              Indirizzo officina
-              <input
-                value={workshopAddress}
-                onChange={(e) => setWorkshopAddress(e.target.value)}
-                placeholder="Es. Via Roma 10"
-              />
-            </label>
+          <div className="inspector-workshop-stat">
+            <span>Orario lavoro</span>
+            <strong>
+              {workStart} - {workEnd}
+            </strong>
+            <p>Finestra disponibilità</p>
+          </div>
+        </section>
 
-            <label>
-              Telefono
-              <input value={phone} onChange={(e) => setPhone(e.target.value)} />
-            </label>
+        <section className="inspector-workshop-grid">
+          <div className="inspector-workshop-card inspector-workshop-form-card">
+            <div className="inspector-workshop-card-head">
+              <div>
+                <span className="inspector-workshop-card-badge">DATI OFFICINA</span>
+                <h2>Profilo operativo</h2>
+                <p>Aggiorna informazioni, contatti e preferenze di calendario.</p>
+              </div>
+            </div>
 
-            <label>
-              Email
-              <input value={email} onChange={(e) => setEmail(e.target.value)} />
-            </label>
-
-            <label>
-              Raggio operativo (km)
-              <input
-                type="number"
-                min={5}
-                max={300}
-                value={radiusKm}
-                onChange={(e) => setRadiusKm(Number(e.target.value))}
-              />
-            </label>
-
-            <div style={{ display: "grid", gap: 12 }}>
-              <label>
-                Orario inizio (work)
-                <input type="time" value={workStart} onChange={(e) => setWorkStart(e.target.value)} />
+            <div className="inspector-workshop-form-grid">
+              <label className="inspector-workshop-field">
+                <span>Nome officina</span>
+                <input
+                  className="input inspector-workshop-input"
+                  value={workshopName}
+                  onChange={(e) => setWorkshopName(e.target.value)}
+                  placeholder="Es. Officina Ascari"
+                />
               </label>
 
-              <label>
-                Orario fine (work)
-                <input type="time" value={workEnd} onChange={(e) => setWorkEnd(e.target.value)} />
+              <label className="inspector-workshop-field">
+                <span>Città</span>
+                <input
+                  className="input inspector-workshop-input"
+                  value={city}
+                  onChange={(e) => setCity(e.target.value)}
+                  placeholder="Es. Milano"
+                />
               </label>
+
+              <label className="inspector-workshop-field inspector-workshop-field-full">
+                <span>Indirizzo officina</span>
+                <input
+                  className="input inspector-workshop-input"
+                  value={workshopAddress}
+                  onChange={(e) => setWorkshopAddress(e.target.value)}
+                  placeholder="Es. Via Roma 10"
+                />
+              </label>
+
+              <label className="inspector-workshop-field">
+                <span>Email</span>
+                <input
+                  className="input inspector-workshop-input"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="email@dominio.it"
+                />
+              </label>
+
+              <label className="inspector-workshop-field">
+                <span>Telefono</span>
+                <input
+                  className="input inspector-workshop-input"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  placeholder="+39..."
+                />
+              </label>
+
+              <label className="inspector-workshop-field">
+                <span>Raggio operativo</span>
+                <div className="inspector-workshop-radius">
+                  <input
+                    className="input inspector-workshop-input"
+                    type="number"
+                    min={5}
+                    max={300}
+                    value={radiusKm}
+                    onChange={(e) => setRadiusKm(Number(e.target.value))}
+                  />
+                  <em>km</em>
+                </div>
+              </label>
+
+              <div className="inspector-workshop-time-box">
+                <label className="inspector-workshop-field">
+                  <span>Inizio lavoro</span>
+                  <input
+                    className="input inspector-workshop-input"
+                    type="time"
+                    value={workStart}
+                    onChange={(e) => setWorkStart(e.target.value)}
+                  />
+                </label>
+
+                <label className="inspector-workshop-field">
+                  <span>Fine lavoro</span>
+                  <input
+                    className="input inspector-workshop-input"
+                    type="time"
+                    value={workEnd}
+                    onChange={(e) => setWorkEnd(e.target.value)}
+                  />
+                </label>
+              </div>
+            </div>
+
+            <div className="inspector-workshop-color-box">
+              <div>
+                <strong>Colore appuntamenti confermati</strong>
+                <span>Usato nel calendario per distinguere le perizie confermate.</span>
+              </div>
+
+              <div className="inspector-workshop-colors">
+                {COLOR_PALETTE.map((c) => (
+                  <button
+                    key={c}
+                    type="button"
+                    onClick={() => setConfirmedColor(c)}
+                    title={c}
+                    className={confirmedColor === c ? "active" : ""}
+                    style={{ background: c }}
+                  />
+                ))}
+
+                <small>
+                  Selezionato: <b>{confirmedColor}</b>
+                </small>
+              </div>
+            </div>
+
+            <div className="inspector-workshop-actions">
+              <button className="btn inspector-workshop-save" onClick={saveProfile} disabled={saving}>
+                {saving ? "Salvataggio..." : "Salva dati officina"}
+              </button>
             </div>
           </div>
 
-          <div style={{ marginTop: 14 }}>
-            <div style={{ fontWeight: 700, marginBottom: 8 }}>
-              Colore appuntamenti confermati
+          <aside className="inspector-workshop-side">
+            <div className="inspector-workshop-card inspector-workshop-next-card">
+              <span className="inspector-workshop-card-badge">PROSSIMA PERIZIA</span>
+
+              {nextAppointment ? (
+                <>
+                  <h3>
+                    {nextAppointment.car?.title ||
+                      `${nextAppointment.car?.make ?? ""} ${nextAppointment.car?.model ?? ""}`.trim() ||
+                      "Auto da periziare"}
+                  </h3>
+                  <p>{formatDateTime(nextAppointment.startAt)}</p>
+                </>
+              ) : (
+                <>
+                  <h3>Nessuna perizia confermata</h3>
+                  <p>Quando un cliente confermerà un appuntamento, lo vedrai qui.</p>
+                </>
+              )}
             </div>
 
-            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-              {COLOR_PALETTE.map((c) => (
-                <button
-                  key={c}
-                  type="button"
-                  onClick={() => setConfirmedColor(c)}
-                  title={c}
-                  style={{
-                    width: 28,
-                    height: 28,
-                    borderRadius: 999,
-                    border:
-                      confirmedColor === c
-                        ? "2px solid white"
-                        : "1px solid rgba(255,255,255,0.25)",
-                    background: c,
-                    cursor: "pointer",
-                  }}
-                />
-              ))}
+            <div className="inspector-workshop-card inspector-workshop-mini-list">
+              <div className="inspector-workshop-mini-head">
+                <span className="inspector-workshop-card-badge">SLOT</span>
+                <strong>{sortedSlots.length}</strong>
+              </div>
 
-              <span style={{ color: "var(--muted)" }}>
-                Selezionato: <b>{confirmedColor}</b>
+              <div className="inspector-workshop-mini-row">
+                <span>Disponibili</span>
+                <b>{availableSlots.length}</b>
+              </div>
+
+              <div className="inspector-workshop-mini-row">
+                <span>Occupati</span>
+                <b>{occupiedSlots.length}</b>
+              </div>
+
+              <div className="inspector-workshop-mini-row">
+                <span>Confermati</span>
+                <b>{confirmedAppointments.length}</b>
+              </div>
+            </div>
+          </aside>
+        </section>
+
+        <section className="inspector-workshop-card inspector-workshop-calendar-card">
+          <div className="inspector-workshop-calendar-head">
+            <div>
+              <span className="inspector-workshop-card-badge">CALENDARIO</span>
+              <h2>Disponibilità officina</h2>
+              <p>
+                Tocca un giorno per inserire uno slot. Tocca uno slot per rimuoverlo.
+                Gli appuntamenti confermati sono evidenziati con il colore scelto.
+              </p>
+            </div>
+
+            <div className="inspector-workshop-legend">
+              <span>
+                <i className="legend-available" />
+                Disponibile
+              </span>
+              <span>
+                <i className="legend-confirmed" style={{ background: confirmedColor }} />
+                Confermato
               </span>
             </div>
           </div>
 
-          <div style={{ marginTop: 14, display: "flex", gap: 10 }}>
-            <button className="btn" onClick={saveProfile} disabled={saving}>
-              {saving ? "Salvataggio..." : "Salva dati officina"}
-            </button>
-          </div>
-        </div>
-
-        <div className="panel" style={{ padding: 16, marginTop: 16 }}>
-          <div className="section-head">
-            <div>
-              <h2 style={{ margin: 0 }}>Calendario disponibilità</h2>
-              <p style={{ marginTop: 6, color: "var(--muted)" }}>
-                Tocca un giorno per inserire uno slot. Tocca uno slot per rimuoverlo.
-                Gli appuntamenti confermati sono colorati.
-              </p>
-            </div>
-          </div>
-
-          <div className="calendar-wrap">
+          <div className="calendar-wrap inspector-workshop-calendar-wrap">
             <FullCalendar
               plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
               initialView="dayGridMonth"
@@ -507,6 +694,12 @@ export default function InspectorWorkshop() {
                 left: "prev,next today",
                 center: "title",
                 right: "dayGridMonth,timeGridWeek,timeGridDay",
+              }}
+              buttonText={{
+                today: "Oggi",
+                month: "Mese",
+                week: "Settimana",
+                day: "Giorno",
               }}
               height="auto"
               events={events}
@@ -527,9 +720,7 @@ export default function InspectorWorkshop() {
               eventClick={async (clickInfo) => {
                 const kind = clickInfo.event.extendedProps?.kind;
 
-                if (kind !== "SLOT") {
-                  return;
-                }
+                if (kind !== "SLOT") return;
 
                 const slotId = Number(clickInfo.event.extendedProps?.slotId);
                 if (!slotId) return;
@@ -546,16 +737,24 @@ export default function InspectorWorkshop() {
             />
           </div>
 
-          <p style={{ marginTop: 10, color: "var(--muted)" }}>
-            Suggerimento: per precisione, usa la vista “Settimana” quando inserisci slot molto specifici.
-          </p>
-        </div>
+          <div className="inspector-workshop-tip">
+            <strong>Suggerimento</strong>
+            <span>
+              Per una gestione più precisa usa la vista “Settimana” o “Giorno” quando inserisci
+              fasce orarie molto specifiche.
+            </span>
+          </div>
+        </section>
 
         {slotModalOpen && (
-          <div className="modal-backdrop" role="dialog" aria-modal="true">
-            <div className="modal-card">
-              <div className="modal-title">
-                <h3 style={{ margin: 0 }}>Crea disponibilità</h3>
+          <div className="modal-backdrop inspector-workshop-modal-backdrop" role="dialog" aria-modal="true">
+            <div className="modal-card inspector-workshop-modal-card">
+              <div className="modal-title inspector-workshop-modal-title">
+                <div>
+                  <span className="inspector-workshop-card-badge">NUOVO SLOT</span>
+                  <h3>Crea disponibilità</h3>
+                </div>
+
                 <button
                   className="icon-btn"
                   onClick={() => {
@@ -570,32 +769,44 @@ export default function InspectorWorkshop() {
                 </button>
               </div>
 
-              <div style={{ color: "var(--muted)", marginTop: 6 }}>
-                Giorno: <b>{selectedDay ? selectedDay.toLocaleDateString() : ""}</b>
+              <div className="inspector-workshop-selected-day">
+                <span>Giorno selezionato</span>
+                <strong>{selectedDay ? selectedDay.toLocaleDateString("it-IT") : ""}</strong>
               </div>
 
-              <div className="modal-grid">
-                <label>
-                  Inizio
-                  <input type="time" value={modalStart} onChange={(e) => setModalStart(e.target.value)} />
+              <div className="modal-grid inspector-workshop-modal-grid">
+                <label className="inspector-workshop-field">
+                  <span>Inizio</span>
+                  <input
+                    className="input inspector-workshop-input"
+                    type="time"
+                    value={modalStart}
+                    onChange={(e) => setModalStart(e.target.value)}
+                  />
                 </label>
 
-                <label>
-                  Fine
-                  <input type="time" value={modalEnd} onChange={(e) => setModalEnd(e.target.value)} />
+                <label className="inspector-workshop-field">
+                  <span>Fine</span>
+                  <input
+                    className="input inspector-workshop-input"
+                    type="time"
+                    value={modalEnd}
+                    onChange={(e) => setModalEnd(e.target.value)}
+                  />
                 </label>
               </div>
 
               {slotModalError && (
-                <div style={{ color: "var(--danger)", marginTop: 10 }}>{slotModalError}</div>
+                <div className="inspector-workshop-modal-error">{slotModalError}</div>
               )}
 
-              <div className="modal-actions">
+              <div className="modal-actions inspector-workshop-modal-actions">
                 <button className="btn" type="button" onClick={createSlotFromModal}>
                   Salva slot
                 </button>
+
                 <button
-                  className="btn-link"
+                  className="btn secondary"
                   type="button"
                   onClick={() => {
                     setSlotModalOpen(false);
@@ -610,7 +821,7 @@ export default function InspectorWorkshop() {
             </div>
           </div>
         )}
-      </div>
+      </main>
 
       {popup.open && (
         <AscariPopup

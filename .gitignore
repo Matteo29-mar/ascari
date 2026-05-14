@@ -12,3 +12,9 @@ backend/uploads
 # Ignora file temporanei o di build
 dist/
 build/
+
+
+# Ignora file di env
+dev/backend/.env
+dev/frontend/.env
+*.env

@@ -9,8 +9,14 @@ type CarMini = {
   title?: string | null;
   make?: string | null;
   model?: string | null;
+  year?: number | null;
   coverUrl?: string | null;
   photos?: string[] | null;
+  paymentStatus?: string | null;
+  marketStatus?: "AVAILABLE" | "SOLD_PENDING_REMOVAL" | "REMOVED_AFTER_SALE";
+  soldAt?: string | null;
+  removalScheduledAt?: string | null;
+  visuallyRemovedAt?: string | null;
 };
 
 type MsgPreview = {
@@ -123,6 +129,16 @@ export default function ChatList() {
         const chatId = Number(c.id);
         if (!Number.isFinite(chatId) || chatId <= 0) return null;
 
+        const soldPendingRemoval =
+          car?.marketStatus === "SOLD_PENDING_REMOVAL" ||
+          car?.paymentStatus === "SOLD";
+
+        const removedAfterSale =
+          car?.marketStatus === "REMOVED_AFTER_SALE" ||
+          !!car?.visuallyRemovedAt;
+
+        if (removedAfterSale) return null;
+
         return (
           <Link to={`${chatBasePath}/${chatId}`} key={chatId} className="chat-row">
             <img src={cover} alt="" className="chat-avatar" />
@@ -137,6 +153,24 @@ export default function ChatList() {
               {c.kind === "INSPECTION" && c.inspectionStatus === "CANCELLED" && (
                 <span className="muted" style={{ fontSize: 12 }}>
                   (Perizia annullata)
+                </span>
+              )}
+
+              {soldPendingRemoval && (
+                <span
+                  style={{
+                    display: "inline-flex",
+                    marginTop: 6,
+                    padding: "4px 8px",
+                    borderRadius: 999,
+                    border: "1px solid rgba(251,191,36,0.35)",
+                    background: "rgba(251,191,36,0.12)",
+                    color: "#fde68a",
+                    fontSize: 12,
+                    fontWeight: 800,
+                  }}
+                >
+                  Auto venduta · chat temporanea
                 </span>
               )}
             </div>
