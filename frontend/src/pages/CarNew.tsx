@@ -15,7 +15,7 @@ import {
   FUEL_TYPES,
   TRANSMISSION_TYPES,
   CAR_MODELS_BY_BRAND_KEY,
-} from '../../../backend/src/constants/carOptions';
+} from '../constants/carOptions';
 import SelectableDropdown from '../components/SelectableDropdown';
 import AddressAutocomplete from '../components/AddressAutocomplete';
 
