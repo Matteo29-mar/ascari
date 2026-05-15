@@ -22,8 +22,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
-    expose:
-      - "4002"
+    ports:
+      - "4002:4002"
     networks:
       - ascari_net
 
