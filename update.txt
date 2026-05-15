@@ -827,6 +827,13 @@ Infine abbiamo ottimizzato Cars.tsx per filtrare le auto vendute e sistemare il 
 
 update 14/05/2026
 1. allestimento nuova architettura
+    allineamento local con map
+    creazione in map con il comando npm run build per creare la cartella di dist (da mettere su s3) 
+    comando npm run preview per vedere il funzionamento( ok)
+    configurata la cli e usato il comando di sync al s3 aws s3 sync dist/ s3://ascari-frontend-prod --delete
+    caricato su s3, sto creando il cloudfront abbastanza di default per il traffico
+    creato i bilanciatori
+    creato nuova rds per db
 2. test di funzionamento 
 3. portare patch tecniche
     1. carosello che torna indietro
