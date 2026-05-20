@@ -7,12 +7,17 @@ import { geocodeAddress } from "../lib/geocode";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
+import crypto from "crypto";
+import {
+  DeleteObjectCommand,
+  PutObjectCommand,
+  S3Client,
+} from "@aws-sdk/client-s3";
 import { buildPdfBuffer } from "../lib/buildInspection";
 import {
   buildCarAvailabilityResponse,
   runSoldCarsVisualCleanup,
 } from "../lib/carSaleLifecycle";
-
 
 const router = express.Router();
 
@@ -46,14 +51,16 @@ const AVAILABLE_CAR_WHERE: Prisma.CarWhereInput = {
 
 const GARAGE_VISIBLE_CAR_WHERE: Prisma.CarWhereInput = {
   marketStatus: {
-    in: [
-      CarMarketStatus.AVAILABLE,
-      CarMarketStatus.SOLD_PENDING_REMOVAL,
-    ],
+    in: [CarMarketStatus.AVAILABLE, CarMarketStatus.SOLD_PENDING_REMOVAL],
   },
   visuallyRemovedAt: null,
 };
 
+const awsRegion = process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || "eu-west-1";
+const carImagesBucket = process.env.ASCARI_CAR_IMAGES_BUCKET || "";
+const carImagesPublicBaseUrl = (process.env.ASCARI_CAR_IMAGES_PUBLIC_BASE_URL || "").replace(/\/$/, "");
+
+const s3 = new S3Client({ region: awsRegion });
 
 function parsePositiveInt(value: any, fallback: number) {
   const n = Number(value);
@@ -108,37 +115,6 @@ async function getDbUserFromClerk(req: express.Request) {
   });
 }
 
-function buildCarsInclude(userId?: string) {
-  if (!userId) {
-    return {
-      owner: {
-        select: {
-          clerkId: true,
-        },
-      },
-    };
-  }
-
-  return {
-    owner: {
-      select: {
-        clerkId: true,
-      },
-    },
-    likes: {
-      where: { userId },
-      select: { id: true },
-    },
-  };
-}
-
-function addLikedByMe(cars: any[], hasUser: boolean) {
-  return cars.map((c: any) => ({
-    ...c,
-    likedByMe: hasUser ? (c.likes?.length ?? 0) > 0 : false,
-  }));
-}
-
 function normalize(value: any) {
   if (value === undefined || value === null || value === "") return null;
 
@@ -188,7 +164,282 @@ function validateCarRequiredFields(body: any) {
   return missing;
 }
 
-function safePublicCarSelect() {
+function isDataImage(value: any): value is string {
+  return typeof value === "string" && /^data:image\/[a-zA-Z0-9.+-]+;base64,/.test(value.trim());
+}
+
+function isHttpUrl(value: any): value is string {
+  return typeof value === "string" && /^https?:\/\//i.test(value.trim());
+}
+
+function isRelativeUploadUrl(value: any): value is string {
+  return typeof value === "string" && value.trim().startsWith("/uploads/");
+}
+
+function isS3ManagedUrl(value: any): value is string {
+  if (!isHttpUrl(value)) return false;
+
+  const trimmed = value.trim();
+
+  if (carImagesPublicBaseUrl && trimmed.startsWith(`${carImagesPublicBaseUrl}/`)) {
+    return true;
+  }
+
+  return trimmed.includes(`/${carImagesBucket}/`) || trimmed.includes(`${carImagesBucket}.s3`);
+}
+
+function getMimeExtension(mimeType: string) {
+  switch (mimeType.toLowerCase()) {
+    case "image/jpeg":
+    case "image/jpg":
+      return "jpg";
+    case "image/png":
+      return "png";
+    case "image/webp":
+      return "webp";
+    case "image/gif":
+      return "gif";
+    default:
+      return "jpg";
+  }
+}
+
+function parseDataImage(dataImage: string) {
+  const match = dataImage.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/);
+  if (!match) return null;
+
+  const mimeType = match[1];
+  const base64 = match[2];
+  const buffer = Buffer.from(base64, "base64");
+
+  return {
+    mimeType,
+    extension: getMimeExtension(mimeType),
+    buffer,
+  };
+}
+
+function buildS3PublicUrl(key: string) {
+  if (carImagesPublicBaseUrl) {
+    return `${carImagesPublicBaseUrl}/${key}`;
+  }
+
+  return `https://${carImagesBucket}.s3.${awsRegion}.amazonaws.com/${key}`;
+}
+
+function extractS3KeyFromUrl(url: string): string | null {
+  if (!url || !carImagesBucket) return null;
+
+  const trimmed = url.trim();
+
+  if (carImagesPublicBaseUrl && trimmed.startsWith(`${carImagesPublicBaseUrl}/`)) {
+    return decodeURIComponent(trimmed.replace(`${carImagesPublicBaseUrl}/`, ""));
+  }
+
+  try {
+    const parsed = new URL(trimmed);
+    const host = parsed.hostname;
+
+    if (host === `${carImagesBucket}.s3.${awsRegion}.amazonaws.com`) {
+      return decodeURIComponent(parsed.pathname.replace(/^\//, ""));
+    }
+
+    if (host.endsWith(".amazonaws.com") && parsed.pathname.includes(`/${carImagesBucket}/`)) {
+      const marker = `/${carImagesBucket}/`;
+      const idx = parsed.pathname.indexOf(marker);
+      return decodeURIComponent(parsed.pathname.slice(idx + marker.length));
+    }
+
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function uniqueStrings(values: string[]) {
+  return Array.from(new Set(values.filter(Boolean)));
+}
+
+function normalizePhotoUrls(coverUrl: any, photos: any): string[] {
+  const result: string[] = [];
+
+  if (typeof coverUrl === "string" && coverUrl.trim()) {
+    result.push(coverUrl.trim());
+  }
+
+  if (Array.isArray(photos)) {
+    for (const p of photos) {
+      if (typeof p === "string" && p.trim()) {
+        result.push(p.trim());
+      }
+    }
+  }
+
+  return uniqueStrings(result);
+}
+
+function stripBase64Photos(coverUrl: any, photos: any): string[] {
+  return normalizePhotoUrls(coverUrl, photos).filter((p) => !isDataImage(p));
+}
+
+async function uploadCarImageFromBase64(dataImage: string, ownerId: string, carId: number | "draft", index: number) {
+  if (!carImagesBucket) {
+    throw new Error("ASCARI_CAR_IMAGES_BUCKET non configurato nel backend .env");
+  }
+
+  const parsed = parseDataImage(dataImage);
+  if (!parsed) {
+    throw new Error("Formato immagine base64 non valido");
+  }
+
+  const hash = crypto.createHash("sha256").update(parsed.buffer).digest("hex").slice(0, 16);
+  const key = `cars/${ownerId}/${carId}/${Date.now()}-${index}-${hash}.${parsed.extension}`;
+
+  await s3.send(
+    new PutObjectCommand({
+      Bucket: carImagesBucket,
+      Key: key,
+      Body: parsed.buffer,
+      ContentType: parsed.mimeType,
+      CacheControl: "public, max-age=31536000, immutable",
+    })
+  );
+
+  return buildS3PublicUrl(key);
+}
+
+async function normalizeAndUploadCarPhotos(inputPhotos: any, ownerId: string, carId: number | "draft") {
+  if (!Array.isArray(inputPhotos)) return [];
+
+  const uploaded: string[] = [];
+
+  for (let i = 0; i < inputPhotos.length; i++) {
+    const raw = inputPhotos[i];
+    if (typeof raw !== "string") continue;
+
+    const value = raw.trim();
+    if (!value) continue;
+
+    if (isDataImage(value)) {
+      uploaded.push(await uploadCarImageFromBase64(value, ownerId, carId, i));
+      continue;
+    }
+
+    if (isHttpUrl(value) || isRelativeUploadUrl(value)) {
+      uploaded.push(value);
+    }
+  }
+
+  return uniqueStrings(uploaded);
+}
+
+async function deleteCarImagesFromS3(urls: string[]) {
+  if (!carImagesBucket) return;
+
+  const keys = uniqueStrings(
+    urls
+      .map((url) => extractS3KeyFromUrl(url))
+      .filter((key): key is string => Boolean(key))
+  );
+
+  for (const key of keys) {
+    try {
+      await s3.send(
+        new DeleteObjectCommand({
+          Bucket: carImagesBucket,
+          Key: key,
+        })
+      );
+    } catch (err) {
+      console.error(`Errore eliminazione immagine S3 ${key}:`, err);
+    }
+  }
+}
+
+async function deleteRemovedS3Images(oldUrls: string[], newUrls: string[]) {
+  const newSet = new Set(newUrls);
+  const removed = oldUrls.filter((url) => isS3ManagedUrl(url) && !newSet.has(url));
+  await deleteCarImagesFromS3(removed);
+}
+
+function buildCarCardSelect(userId?: string): Prisma.CarSelect {
+  return {
+    id: true,
+    make: true,
+    model: true,
+    title: true,
+    year: true,
+    priceEur: true,
+    mileageKm: true,
+    fuelType: true,
+    transmission: true,
+    city: true,
+    coverUrl: true,
+    photos: true,
+    ownerId: true,
+    marketStatus: true,
+    createdAt: true,
+    owner: {
+      select: {
+        clerkId: true,
+      },
+    },
+    ...(userId
+      ? {
+          likes: {
+            where: { userId },
+            select: { id: true },
+          },
+        }
+      : {}),
+  };
+}
+
+function buildCarDetailInclude(userId?: string): Prisma.CarInclude {
+  return {
+    owner: true,
+    ...(userId
+      ? {
+          likes: {
+            where: { userId },
+            select: { id: true },
+          },
+        }
+      : {
+          likes: {
+            select: { id: true },
+          },
+        }),
+  };
+}
+
+function toCarCard(car: any, hasUser: boolean) {
+  const { likes, ...rest } = car;
+
+  return {
+    ...rest,
+    photos: stripBase64Photos(car.coverUrl, car.photos),
+    coverUrl: isDataImage(car.coverUrl) ? null : car.coverUrl,
+    likedByMe: hasUser ? (likes?.length ?? 0) > 0 : false,
+  };
+}
+
+function mapCarCards(cars: any[], hasUser: boolean) {
+  return cars.map((car) => toCarCard(car, hasUser));
+}
+
+function toCarDetail(car: any, hasUser: boolean) {
+  const { likes, ...rest } = car;
+
+  return {
+    ...rest,
+    photos: stripBase64Photos(car.coverUrl, car.photos),
+    coverUrl: isDataImage(car.coverUrl) ? null : car.coverUrl,
+    likedByMe: hasUser ? (likes?.length ?? 0) > 0 : false,
+  };
+}
+
+function safePublicCarSelect(): Prisma.CarSelect {
   return {
     id: true,
     make: true,
@@ -362,7 +613,6 @@ router.post("/", async (req, res) => {
       horsepower,
       mileageKm,
       description,
-      coverUrl,
       photos,
       locationText,
       city,
@@ -391,13 +641,6 @@ router.post("/", async (req, res) => {
         ? title.trim()
         : [make, model, year].filter(Boolean).join(" ") || "Nuova auto";
 
-    const finalCover =
-      typeof coverUrl === "string" && coverUrl.trim() !== ""
-        ? coverUrl.trim()
-        : Array.isArray(photos) && photos.length > 0
-        ? photos[0]
-        : null;
-
     const loc = String(locationText).trim();
     const c = String(city).trim();
 
@@ -406,6 +649,15 @@ router.post("/", async (req, res) => {
     if (!geo) {
       return res.status(400).json({
         error: "Indirizzo/Città non trovati. Controlla e riprova.",
+      });
+    }
+
+    const uploadedPhotos = await normalizeAndUploadCarPhotos(photos, user.id, "draft");
+
+    if (!uploadedPhotos.length) {
+      return res.status(400).json({
+        error: "Almeno una foto valida è obbligatoria.",
+        fields: ["photos"],
       });
     }
 
@@ -425,8 +677,8 @@ router.post("/", async (req, res) => {
         mileageKm: mileageKm === "" || mileageKm === undefined ? null : Number(mileageKm),
         description: normalize(description),
 
-        coverUrl: finalCover,
-        photos: Array.isArray(photos) ? photos : [],
+        coverUrl: uploadedPhotos[0],
+        photos: uploadedPhotos,
         ownerId: user.id,
 
         locationText: loc,
@@ -446,12 +698,13 @@ router.post("/", async (req, res) => {
 
         marketStatus: "AVAILABLE",
       },
+      select: buildCarCardSelect(user.id),
     });
 
-    return res.json(car);
-  } catch (err) {
+    return res.json(toCarCard(car, true));
+  } catch (err: any) {
     console.error("POST /api/cars error:", err);
-    return res.status(500).json({ error: "Error creating car" });
+    return res.status(500).json({ error: err?.message || "Error creating car" });
   }
 });
 
@@ -490,16 +743,14 @@ router.get("/search", async (req, res) => {
       prisma.car.count({ where }),
       prisma.car.findMany({
         where,
-        include: buildCarsInclude(user?.id),
+        select: buildCarCardSelect(user?.id),
         orderBy: { createdAt: "desc" },
         skip,
         take: pageSize,
       }),
     ]);
 
-    return res.json(
-      buildPaginatedResponse(addLikedByMe(cars, !!user), total, page, pageSize)
-    );
+    return res.json(buildPaginatedResponse(mapCarCards(cars, !!user), total, page, pageSize));
   } catch (err) {
     console.error("GET /api/cars/search error:", err);
     return res.status(500).json({ error: "Search error" });
@@ -600,16 +851,14 @@ router.get("/filter", async (req, res) => {
       prisma.car.count({ where }),
       prisma.car.findMany({
         where,
-        include: buildCarsInclude(user?.id),
+        select: buildCarCardSelect(user?.id),
         orderBy: { createdAt: "desc" },
         skip,
         take: pageSize,
       }),
     ]);
 
-    return res.json(
-      buildPaginatedResponse(addLikedByMe(cars, !!user), total, page, pageSize)
-    );
+    return res.json(buildPaginatedResponse(mapCarCards(cars, !!user), total, page, pageSize));
   } catch (e) {
     console.error("GET /api/cars/filter error:", e);
     return res.status(500).json({ error: "Errore filtraggio" });
@@ -701,7 +950,7 @@ router.get("/nearby", async (req, res) => {
         id: { in: ids },
         ...AVAILABLE_CAR_WHERE,
       },
-      include: buildCarsInclude(user?.id),
+      select: buildCarCardSelect(user?.id),
     });
 
     const distanceMap = new Map<number, number>();
@@ -718,9 +967,7 @@ router.get("/nearby", async (req, res) => {
         distanceKm: distanceMap.get(car.id) ?? null,
       }));
 
-    return res.json(
-      buildPaginatedResponse(addLikedByMe(orderedCars, !!user), total, page, pageSize)
-    );
+    return res.json(buildPaginatedResponse(mapCarCards(orderedCars, !!user), total, page, pageSize));
   } catch (e) {
     console.error("GET /api/cars/nearby error", e);
     return res.status(500).json({ error: "Nearby search error" });
@@ -773,7 +1020,7 @@ router.get("/:id/alternatives", async (req, res) => {
       for (const row of rows) {
         if (alternatives.length >= 3) break;
         selectedIds.add(row.id);
-        alternatives.push(row);
+        alternatives.push(toCarCard(row, false));
       }
     }
 
@@ -817,29 +1064,27 @@ router.get("/", async (req, res) => {
     const pageSize = parsePageSize(req);
     const skip = (page - 1) * pageSize;
 
-  const where: Prisma.CarWhereInput = {
-    marketStatus: CarMarketStatus.AVAILABLE,
-    paymentStatus: {
-      not: "SOLD",
-    },
-    soldAt: null,
-    visuallyRemovedAt: null,
-  };
+    const where: Prisma.CarWhereInput = {
+      marketStatus: CarMarketStatus.AVAILABLE,
+      paymentStatus: {
+        not: "SOLD",
+      },
+      soldAt: null,
+      visuallyRemovedAt: null,
+    };
 
-  const [total, cars] = await Promise.all([
-    prisma.car.count({ where }),
-    prisma.car.findMany({
-      where,
-      include: buildCarsInclude(user?.id),
-      orderBy: { createdAt: "desc" },
-      skip,
-      take: pageSize,
-    }),
-  ]);
+    const [total, cars] = await Promise.all([
+      prisma.car.count({ where }),
+      prisma.car.findMany({
+        where,
+        select: buildCarCardSelect(user?.id),
+        orderBy: { createdAt: "desc" },
+        skip,
+        take: pageSize,
+      }),
+    ]);
 
-    return res.json(
-      buildPaginatedResponse(addLikedByMe(cars, !!user), total, page, pageSize)
-    );
+    return res.json(buildPaginatedResponse(mapCarCards(cars, !!user), total, page, pageSize));
   } catch (e) {
     console.error("GET /api/cars error:", e);
     return res.status(500).json({ error: "Error fetching cars" });
@@ -875,7 +1120,7 @@ router.get("/my-garage", async (req, res) => {
         ownerId: user.id,
         ...GARAGE_VISIBLE_CAR_WHERE,
       },
-      include: { likes: true, owner: true },
+      select: buildCarCardSelect(user.id),
       orderBy: { createdAt: "desc" },
     });
 
@@ -886,23 +1131,13 @@ router.get("/my-garage", async (req, res) => {
           some: { userId: user.id },
         },
       },
-      include: { owner: true, likes: true },
+      select: buildCarCardSelect(user.id),
       orderBy: { createdAt: "desc" },
     });
 
-    const myCarsWithLikes = myCars.map((c: any) => ({
-      ...c,
-      likedByMe: Array.isArray(c.likes) ? c.likes.length > 0 : false,
-    }));
-
-    const likedCarsWithLikes = likedCars.map((c: any) => ({
-      ...c,
-      likedByMe: true,
-    }));
-
     return res.json({
-      myCars: myCarsWithLikes,
-      likedCars: likedCarsWithLikes,
+      myCars: mapCarCards(myCars, true),
+      likedCars: mapCarCards(likedCars, true),
     });
   } catch (err) {
     console.error("GET /api/cars/my-garage error:", err);
@@ -912,9 +1147,6 @@ router.get("/my-garage", async (req, res) => {
 
 /**
  * GET /api/cars/:id/availability
- *
- * Controlla se l'auto è ancora disponibile.
- * Se è venduta, restituisce 3 alternative disponibili.
  */
 router.get("/:id/availability", async (req, res) => {
   const carId = Number(req.params.id);
@@ -955,8 +1187,7 @@ router.get("/:id/availability", async (req, res) => {
       );
     }
 
-    const isAvailable =
-      car.marketStatus === "AVAILABLE" && !car.visuallyRemovedAt;
+    const isAvailable = car.marketStatus === "AVAILABLE" && !car.visuallyRemovedAt;
 
     let alternatives: any[] = [];
 
@@ -975,21 +1206,7 @@ router.get("/:id/availability", async (req, res) => {
             },
             ...whereExtra,
           },
-          select: {
-            id: true,
-            make: true,
-            model: true,
-            title: true,
-            year: true,
-            coverUrl: true,
-            photos: true,
-            priceEur: true,
-            mileageKm: true,
-            fuelType: true,
-            transmission: true,
-            city: true,
-            marketStatus: true,
-          },
+          select: safePublicCarSelect(),
           orderBy: {
             createdAt: "desc",
           },
@@ -1000,7 +1217,7 @@ router.get("/:id/availability", async (req, res) => {
           if (alternatives.length >= 3) break;
 
           selectedIds.add(row.id);
-          alternatives.push(row);
+          alternatives.push(toCarCard(row, false));
         }
       }
 
@@ -1061,19 +1278,18 @@ router.get("/:id", async (req, res) => {
   }
 
   try {
+    const user = await getDbUserFromClerk(req);
+
     const car = await prisma.car.findUnique({
       where: { id },
-      include: {
-        owner: true,
-        likes: true,
-      },
+      include: buildCarDetailInclude(user?.id),
     });
 
     if (!car) {
       return res.status(404).json({ error: "Car not found" });
     }
 
-    return res.json(car);
+    return res.json(toCarDetail(car, !!user));
   } catch (err) {
     console.error("GET /api/cars/:id error:", err);
     return res.status(500).json({ error: "Error fetching car" });
@@ -1216,6 +1432,17 @@ router.put("/:id", async (req, res) => {
       });
     }
 
+    const inputPhotos = Array.isArray(req.body.photos) ? req.body.photos : [];
+    const oldUrls = normalizePhotoUrls(car.coverUrl, car.photos);
+    const newPhotos = await normalizeAndUploadCarPhotos(inputPhotos, user.id, carId);
+
+    if (!newPhotos.length) {
+      return res.status(400).json({
+        error: "Almeno una foto valida è obbligatoria.",
+        fields: ["photos"],
+      });
+    }
+
     const data: any = {
       make: String(req.body.make).trim(),
       model: String(req.body.model).trim(),
@@ -1239,22 +1466,13 @@ router.put("/:id", async (req, res) => {
       seats: normalize(req.body.seats),
       doors: normalize(req.body.doors),
       priceEur: normalize(req.body.priceEur),
+      photos: newPhotos,
+      coverUrl: newPhotos[0],
     };
 
     data.offerPrice1 = Number(offerPrice1);
     data.offerPrice2 = Number(offerPrice2);
     data.offerPrice3 = Number(offerPrice3);
-
-    if (Array.isArray(req.body.photos)) {
-      data.photos = req.body.photos;
-    }
-
-    data.coverUrl =
-      typeof req.body.coverUrl === "string" && req.body.coverUrl.trim() !== ""
-        ? req.body.coverUrl.trim()
-        : Array.isArray(req.body.photos) && req.body.photos.length > 0
-        ? req.body.photos[0]
-        : car.coverUrl;
 
     if (data.locationText || data.city) {
       const geo = await geocodeAddress(data.locationText ?? "", data.city ?? undefined);
@@ -1272,12 +1490,15 @@ router.put("/:id", async (req, res) => {
     const updated = await prisma.car.update({
       where: { id: carId },
       data,
+      select: buildCarCardSelect(user.id),
     });
 
-    return res.json(updated);
-  } catch (err) {
+    await deleteRemovedS3Images(oldUrls, newPhotos);
+
+    return res.json(toCarCard(updated, true));
+  } catch (err: any) {
     console.error("PUT /api/cars/:id error:", err);
-    return res.status(500).json({ error: "Error updating car" });
+    return res.status(500).json({ error: err?.message || "Error updating car" });
   }
 });
 
@@ -1314,6 +1535,8 @@ router.delete("/:id", async (req, res) => {
       return res.status(403).json({ error: "Not allowed to delete this car" });
     }
 
+    const imageUrls = normalizePhotoUrls(car.coverUrl, car.photos);
+
     if (car.marketStatus === "SOLD_PENDING_REMOVAL") {
       await prisma.car.update({
         where: { id: carId },
@@ -1323,6 +1546,8 @@ router.delete("/:id", async (req, res) => {
           paymentEnabled: false,
         },
       });
+
+      await deleteCarImagesFromS3(imageUrls);
 
       return res.json({
         success: true,
@@ -1354,8 +1579,7 @@ router.delete("/:id", async (req, res) => {
 
     if (inProgressInspection) {
       return res.status(400).json({
-        error:
-          "Non puoi eliminare un'auto con una perizia in corso. Attendi la fine dell'appuntamento.",
+        error: "Non puoi eliminare un'auto con una perizia in corso. Attendi la fine dell'appuntamento.",
       });
     }
 
@@ -1369,6 +1593,7 @@ router.delete("/:id", async (req, res) => {
     });
 
     await prisma.car.delete({ where: { id: carId } });
+    await deleteCarImagesFromS3(imageUrls);
 
     return res.json({ success: true });
   } catch (err) {

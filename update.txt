@@ -831,3 +831,14 @@ update 14/05/2026
 3. portare patch tecniche
     1. carosello che torna indietro
     2. notifica delle offerte
+
+
+update 20/05/2026
+1. modificare grandezza chiamate api per restituire immagini 
+2. predisporre bucket s3 per caricare sopra le immagini
+
+resconto giornata
+spostato il peso delle immagini fuori dal database e alleggerito le API GET
+Prima il DB conteneva immagini in base64, quindi dentro coverUrl e/o photos avevi stringhe enormi tipo tutta l'immagini
+questo rendeva le API pesantissime, ora il DB non salva più immagini intera salva solo URL s3
+Prima le GET caricavano troppi dati dal DB, perché usavano spesso include o restituivano tutto il modello Car.
