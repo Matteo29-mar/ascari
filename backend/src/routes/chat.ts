@@ -107,6 +107,8 @@ const offerCarSelect = {
   ascariFeeEur: true,
   sellerNetEur: true,
   paymentStatus: true,
+  isPeriziata: true,
+  inspectionFeeEur: true,
 
   marketStatus: true,
   soldAt: true,
@@ -125,6 +127,8 @@ const inspectionCarSelect = {
 
   paymentStatus: true,
   marketStatus: true,
+  isPeriziata: true,
+  inspectionFeeEur: true,
   soldAt: true,
   removalScheduledAt: true,
   visuallyRemovedAt: true,

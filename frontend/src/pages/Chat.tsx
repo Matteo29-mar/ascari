@@ -47,9 +47,13 @@ type ChatCar = {
   soldAt?: string | null;
   removalScheduledAt?: string | null;
   visuallyRemovedAt?: string | null;
+
+  isPeriziata?: boolean | null;
+  inspectionFeeEur?: number | null;
 };
 
 const ASCARI_FEE_PERCENT = 10;
+const INSPECTION_FEE_EUR = 120;
 const CHAT_POLL_MS = 3000;
 
 function formatEuro(value?: number | null) {
@@ -220,14 +224,16 @@ const paymentActionsDisabled = carSold || carRemovedAfterSale;
   const paymentPreview = useMemo(() => {
     const salePrice = parsePositiveInt(paymentPriceInput);
     const ascariFee = Math.round((salePrice * ASCARI_FEE_PERCENT) / 100);
-    const sellerNet = Math.max(salePrice - ascariFee, 0);
+    const inspectionFee = currentCar?.isPeriziata ? 0 : INSPECTION_FEE_EUR;
+    const sellerNet = Math.max(salePrice - ascariFee - inspectionFee, 0);
 
     return {
       salePrice,
       ascariFee,
+      inspectionFee,
       sellerNet,
     };
-  }, [paymentPriceInput]);
+  }, [paymentPriceInput, currentCar?.isPeriziata]);
 
   async function authHeaders() {
     const token = await getToken();
@@ -678,6 +684,10 @@ const paymentActionsDisabled = carSold || carRemovedAfterSale;
                     value={formatEuro(currentCar.ascariFeeEur)}
                   />
                   <MiniValue
+                    label="Commissione periziatore"
+                    value={formatEuro(currentCar.inspectionFeeEur ?? 0)}
+                  />
+                  <MiniValue
                     label="Netto venditore"
                     value={formatEuro(currentCar.sellerNetEur)}
                   />
@@ -899,6 +909,19 @@ const paymentActionsDisabled = carSold || carRemovedAfterSale;
                 value={paymentPreview.salePrice > 0 ? formatEuro(paymentPreview.sellerNet) : "—"}
                 highlight
               />
+              <PaymentValueCard
+                label={
+                  currentCar.isPeriziata
+                    ? "Commissione periziatore già coperta"
+                    : "Commissione periziatore"
+                }
+                value={
+                  paymentPreview.salePrice > 0
+                    ? formatEuro(paymentPreview.inspectionFee)
+                    : "—"
+                }
+              />
+
             </div>
 
             <div

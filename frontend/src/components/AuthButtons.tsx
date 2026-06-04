@@ -8,10 +8,14 @@ import {
   useUser,
 } from "@clerk/clerk-react";
 import { useNavigate } from "react-router-dom";
+import { useRole } from "../hooks/useRole";
 
 export function AuthButtons() {
   const { user } = useUser();
   const navigate = useNavigate();
+  const { role } = useRole();
+
+  const isInspector = role === "PERIZIATORE";
 
   return (
     <div
@@ -59,14 +63,16 @@ export function AuthButtons() {
               <UserButton.Action
                 label="Area pagamenti"
                 labelIcon={<span style={{ fontSize: 16 }}>🏦</span>}
-                onClick={() => navigate("/payments")}
+                onClick={() => navigate(isInspector ? "/inspector/payments" : "/payments")}
               />
 
-              <UserButton.Action
-                label="Storico"
-                labelIcon={<span style={{ fontSize: 16 }}>📜</span>}
-                onClick={() => navigate("/history")}
-              />
+              {!isInspector && (
+                <UserButton.Action
+                  label="Storico"
+                  labelIcon={<span style={{ fontSize: 16 }}>📜</span>}
+                  onClick={() => navigate("/history")}
+                />
+              )}
             </UserButton.MenuItems>
           </UserButton>
 

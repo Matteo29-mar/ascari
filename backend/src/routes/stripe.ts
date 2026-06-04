@@ -9,6 +9,23 @@ import { markCarAsSoldPendingRemoval } from "../lib/carSaleLifecycle";
 
 const router = Router();
 
+const ASCARI_FEE_PERCENT = 10;
+const INSPECTION_CASHOUT_AMOUNT_EUR = 120;
+
+function computeSalePaymentBreakdown(salePriceEur: number, isPeriziata: boolean) {
+  const gross = Math.round(Number(salePriceEur));
+  const ascariFeeEur = Math.round((gross * ASCARI_FEE_PERCENT) / 100);
+  const inspectionFeeEur = isPeriziata ? 0 : INSPECTION_CASHOUT_AMOUNT_EUR;
+  const sellerNetEur = Math.max(gross - ascariFeeEur - inspectionFeeEur, 0);
+
+  return {
+    salePriceEur: gross,
+    ascariFeeEur,
+    inspectionFeeEur,
+    sellerNetEur,
+  };
+}
+
 async function requireMe(req: any) {
   const { userId: clerkId } = getAuth(req);
 
@@ -43,6 +60,20 @@ function mapStripeStatus(user: any) {
   };
 }
 
+function normalizeFrontendPath(path?: string | null) {
+  const value = String(path || "/payments").trim();
+
+  if (!value.startsWith("/")) {
+    return "/payments";
+  }
+
+  if (value.startsWith("//")) {
+    return "/payments";
+  }
+
+  return value;
+}
+
 async function getOrCreateConnectedAccount(user: any) {
   if (user.stripeAccountId) {
     return user.stripeAccountId;
@@ -68,6 +99,27 @@ async function getOrCreateConnectedAccount(user: any) {
   return account.id;
 }
 
+async function createAccountLink(params: {
+  user: any;
+  returnPath?: string | null;
+}) {
+  const stripeAccountId = await getOrCreateConnectedAccount(params.user);
+  const safePath = normalizeFrontendPath(params.returnPath);
+
+  const accountLink = await stripe.accountLinks.create({
+    account: stripeAccountId,
+    refresh_url: buildFrontendUrl(safePath),
+    return_url: buildFrontendUrl(safePath),
+    type: "account_onboarding",
+  });
+
+  return {
+    ok: true,
+    url: accountLink.url,
+    accountId: stripeAccountId,
+  };
+}
+
 async function syncStripeAccountToDb(userId: string, stripeAccountId: string) {
   const account = await stripe.accounts.retrieve(stripeAccountId);
 
@@ -89,6 +141,15 @@ async function syncStripeAccountToDb(userId: string, stripeAccountId: string) {
   });
 
   return updatedUser;
+}
+
+function isStripeUserReady(user: any) {
+  return (
+    !!user?.stripeAccountId &&
+    !!user?.stripeChargesEnabled &&
+    !!user?.stripePayoutsEnabled &&
+    !!user?.stripeDetailsSubmitted
+  );
 }
 
 function buildCarSnapshot(car: any) {
@@ -219,7 +280,6 @@ async function createSaleHistoryIfNeeded(params: {
 
   const now = payment.paidAt ?? new Date();
 
-
   const history = await prisma.$transaction(async (tx) => {
     const createdHistory = await tx.saleHistory.create({
       data: {
@@ -230,6 +290,7 @@ async function createSaleHistoryIfNeeded(params: {
 
         amountEur: payment.amountEur,
         ascariFeeEur: payment.ascariFeeEur,
+        inspectionFeeEur: payment.inspectionFeeEur ?? 0,
         sellerNetEur: payment.sellerNetEur,
         currency: payment.currency || "eur",
 
@@ -296,24 +357,18 @@ router.get("/account/status", async (req, res) => {
 
 // =========================
 // ACCOUNT ONBOARDING
+// body opzionale: { returnPath: "/payments" | "/inspector/payments" }
 // =========================
 router.post("/account/onboarding-link", async (req, res) => {
   try {
     const me = await requireMe(req);
-    const stripeAccountId = await getOrCreateConnectedAccount(me);
 
-    const accountLink = await stripe.accountLinks.create({
-      account: stripeAccountId,
-      refresh_url: buildFrontendUrl("/payments"),
-      return_url: buildFrontendUrl("/payments"),
-      type: "account_onboarding",
+    const accountLink = await createAccountLink({
+      user: me,
+      returnPath: req.body?.returnPath ?? "/payments",
     });
 
-    return res.json({
-      ok: true,
-      url: accountLink.url,
-      accountId: stripeAccountId,
-    });
+    return res.json(accountLink);
   } catch (e: any) {
     console.error("POST /stripe/account/onboarding-link error:", e);
     return res.status(e?.status || 500).json({
@@ -325,24 +380,200 @@ router.post("/account/onboarding-link", async (req, res) => {
 router.post("/account/refresh-link", async (req, res) => {
   try {
     const me = await requireMe(req);
-    const stripeAccountId = await getOrCreateConnectedAccount(me);
 
-    const accountLink = await stripe.accountLinks.create({
-      account: stripeAccountId,
-      refresh_url: buildFrontendUrl("/payments"),
-      return_url: buildFrontendUrl("/payments"),
-      type: "account_onboarding",
+    const accountLink = await createAccountLink({
+      user: me,
+      returnPath: req.body?.returnPath ?? "/payments",
     });
 
-    return res.json({
-      ok: true,
-      url: accountLink.url,
-      accountId: stripeAccountId,
-    });
+    return res.json(accountLink);
   } catch (e: any) {
     console.error("POST /stripe/account/refresh-link error:", e);
     return res.status(e?.status || 500).json({
       error: e?.message || "Errore refresh onboarding Stripe",
+    });
+  }
+});
+
+// =========================
+// CASHOUT PERIZIATORE - ARCHIVIO TRANSAZIONI
+// GET /api/stripe/inspector-cashouts
+// =========================
+router.get("/inspector-cashouts", async (req, res) => {
+  try {
+    const me = await requireMe(req);
+
+    const cashouts = await prisma.inspectorCashout.findMany({
+      where: {
+        inspectorUserId: me.id,
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+      include: {
+        report: {
+          include: {
+            car: {
+              select: {
+                id: true,
+                make: true,
+                model: true,
+                year: true,
+                coverUrl: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    return res.json({
+      ok: true,
+      cashouts,
+    });
+  } catch (e: any) {
+    console.error("GET /stripe/inspector-cashouts error:", e);
+    return res.status(e?.status || 500).json({
+      error: e?.message || "Errore recupero cashout periziatore",
+    });
+  }
+});
+
+// =========================
+// CASHOUT PERIZIATORE - RICHIESTA 120€
+// POST /api/stripe/inspection-reports/:reportId/cashout
+// =========================
+router.post("/inspection-reports/:reportId/cashout", async (req, res) => {
+  try {
+    const me = await requireMe(req);
+
+    const reportId = Number(req.params.reportId);
+    if (!Number.isFinite(reportId) || reportId <= 0) {
+      return res.status(400).json({ error: "ID resoconto non valido" });
+    }
+
+    const report = await prisma.inspectionReport.findFirst({
+      where: {
+        id: reportId,
+        inspectorUserId: me.id,
+      },
+      include: {
+        car: {
+          select: {
+            id: true,
+            make: true,
+            model: true,
+            year: true,
+          },
+        },
+        cashout: true,
+      },
+    });
+
+    if (!report) {
+      return res.status(404).json({
+        error: "Resoconto non trovato o non autorizzato",
+      });
+    }
+
+    if (report.cashout) {
+      return res.json({
+        ok: true,
+        alreadyRequested: true,
+        cashout: report.cashout,
+        message:
+          report.cashout.status === "PAID"
+            ? "Cashout già richiesto per questo resoconto."
+            : "Cashout già presente per questo resoconto.",
+      });
+    }
+
+    let currentUser = me;
+
+    if (!currentUser.stripeAccountId) {
+      const accountLink = await createAccountLink({
+        user: currentUser,
+        returnPath: "/inspector/payments",
+      });
+
+      return res.status(409).json({
+        ok: false,
+        needsOnboarding: true,
+        accountLinkUrl: accountLink.url,
+        message: "Completa prima i dati di pagamento Stripe.",
+      });
+    }
+
+    currentUser = await syncStripeAccountToDb(
+      currentUser.id,
+      currentUser.stripeAccountId
+    );
+
+    if (!isStripeUserReady(currentUser)) {
+      const accountLink = await createAccountLink({
+        user: currentUser,
+        returnPath: "/inspector/payments",
+      });
+
+      return res.status(409).json({
+        ok: false,
+        needsOnboarding: true,
+        accountLinkUrl: accountLink.url,
+        message: "Completa prima i dati di pagamento Stripe.",
+      });
+    }
+
+    const amountCents = INSPECTION_CASHOUT_AMOUNT_EUR * 100;
+
+    const stripeAccountId = currentUser.stripeAccountId;
+
+      if (!stripeAccountId) {
+        return res.status(400).json({
+          ok: false,
+          error: "Account Stripe periziatore non collegato",
+        });
+      }
+
+      const transfer = await stripe.transfers.create({
+        amount: amountCents,
+        currency: "eur",
+        destination: stripeAccountId,
+        description: `ASCARI cashout perizia report #${report.id}`,
+        metadata: {
+          ascariType: "INSPECTION_CASHOUT",
+          ascariReportId: String(report.id),
+          ascariInspectorUserId: currentUser.id,
+        },
+      });
+
+    const cashout = await prisma.inspectorCashout.create({
+      data: {
+        reportId: report.id,
+        inspectorUserId: currentUser.id,
+        amountEur: INSPECTION_CASHOUT_AMOUNT_EUR,
+        currency: "eur",
+        status: "PAID",
+        stripeTransferId: transfer.id,
+        stripeAccountId: currentUser.stripeAccountId,
+        paidAt: new Date(),
+      },
+    });
+
+    return res.json({
+      ok: true,
+      cashout,
+      transferId: transfer.id,
+      amountEur: INSPECTION_CASHOUT_AMOUNT_EUR,
+      message:
+        "La richiesta di cashout è partita, riceverai sul tuo conto i soldi 120 euro.",
+    });
+  } catch (e: any) {
+    console.error("POST /stripe/inspection-reports/:reportId/cashout error:", e);
+
+    return res.status(e?.statusCode || e?.status || 500).json({
+      error:
+        e?.message ||
+        "Errore richiesta cashout. Verifica che il saldo Stripe di Ascari sia disponibile.",
     });
   }
 });
@@ -404,7 +635,7 @@ router.post("/cars/:carId/configure", async (req, res) => {
       });
     }
 
-    const amounts = computeAscariFee(salePriceEur);
+    const amounts = computeSalePaymentBreakdown(salePriceEur, !!car.isPeriziata);
 
     const updatedCar = await prisma.car.update({
       where: { id: carId },
@@ -412,6 +643,7 @@ router.post("/cars/:carId/configure", async (req, res) => {
         paymentEnabled: true,
         salePriceEur: amounts.salePriceEur,
         ascariFeeEur: amounts.ascariFeeEur,
+        inspectionFeeEur: amounts.inspectionFeeEur,
         sellerNetEur: amounts.sellerNetEur,
         paymentStatus: "CONFIGURED",
         paymentConfiguredAt: new Date(),
@@ -460,7 +692,7 @@ router.post("/cars/:carId/create-payment-intent", async (req, res) => {
       });
     }
 
-if (car.paymentStatus === "SOLD" || car.marketStatus !== "AVAILABLE") {
+    if (car.paymentStatus === "SOLD" || car.marketStatus !== "AVAILABLE") {
       return res.status(400).json({
         error: "Auto già venduta",
       });
@@ -500,7 +732,9 @@ if (car.paymentStatus === "SOLD" || car.marketStatus !== "AVAILABLE") {
     }
 
     const amountCents = Math.round(car.salePriceEur * 100);
-    const applicationFeeCents = Math.round(car.ascariFeeEur * 100);
+    const applicationFeeCents = Math.round(
+      ((car.ascariFeeEur ?? 0) + (car.inspectionFeeEur ?? 0)) * 100
+    );
 
     const alreadySucceeded = await prisma.payment.findFirst({
       where: {
@@ -577,6 +811,7 @@ if (car.paymentStatus === "SOLD" || car.marketStatus !== "AVAILABLE") {
         stripeClientSecret: paymentIntent.client_secret ?? null,
         amountEur: car.salePriceEur,
         ascariFeeEur: car.ascariFeeEur,
+        inspectionFeeEur: car.inspectionFeeEur ?? 0,
         sellerNetEur: car.sellerNetEur,
         currency: "eur",
         status: (paymentIntent.status || "CREATED").toUpperCase(),

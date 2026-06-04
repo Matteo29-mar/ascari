@@ -13,6 +13,13 @@ enum CarMarketStatus {
   REMOVED_AFTER_SALE
 }
 
+enum CashoutStatus {
+  REQUESTED
+  PAID
+  FAILED
+  CANCELLED
+}
+
 model User {
   id        String   @id @default(cuid())
   clerkId   String   @unique
@@ -43,6 +50,7 @@ model User {
 
   sellerInspectionRequests InspectionRequest[] @relation("SellerInspectionRequests")
   inspectionReports        InspectionReport[]
+  inspectorCashouts        InspectorCashout[]
 
   buyerPayments  Payment[] @relation("BuyerPayments")
   sellerPayments Payment[] @relation("SellerPayments")
@@ -169,6 +177,7 @@ model Car {
   paymentEnabled      Boolean   @default(false)
   salePriceEur        Int?
   ascariFeeEur        Int?
+  inspectionFeeEur    Int?
   sellerNetEur        Int?
   paymentStatus       String    @default("NOT_CONFIGURED")
   paymentConfiguredAt DateTime?
@@ -226,6 +235,8 @@ model InspectionReport {
   carId Int
   car   Car @relation(fields: [carId], references: [id], onDelete: Cascade)
 
+  cashout InspectorCashout?
+
   title          String?
   overallStatus  String?
   plate          String?
@@ -250,6 +261,36 @@ model InspectionReport {
 
   @@index([inspectorUserId, createdAt])
   @@index([carId])
+}
+
+model InspectorCashout {
+  id Int @id @default(autoincrement())
+
+  reportId Int              @unique
+  report   InspectionReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  inspectorUserId String
+  inspectorUser   User   @relation(fields: [inspectorUserId], references: [id], onDelete: Cascade)
+
+  amountEur Int    @default(120)
+  currency  String @default("eur")
+
+  status CashoutStatus @default(REQUESTED)
+
+  stripeTransferId String? @unique
+  stripeAccountId  String?
+
+  failureReason String?
+
+  requestedAt DateTime @default(now())
+  paidAt      DateTime?
+  failedAt    DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([inspectorUserId, createdAt])
+  @@index([status])
 }
 
 model Like {
@@ -336,6 +377,7 @@ model Payment {
 
   amountEur    Int
   ascariFeeEur Int
+  inspectionFeeEur Int?
   sellerNetEur Int
   currency     String @default("eur")
 
@@ -368,6 +410,7 @@ model SaleHistory {
 
   amountEur    Int
   ascariFeeEur Int?
+  inspectionFeeEur Int?
   sellerNetEur Int?
 
   currency String @default("eur")

@@ -38,6 +38,7 @@ import InspectorReportDetail from "./pages/InspectorReportDetail";
 import PaymentReturn from "./pages/PaymentReturn";
 import History from "./pages/History";
 import HistoryDetail from "./pages/HistoryDetail";
+import InspectorPayments from "./pages/InspectorPayments";
 
 import { AuthButtons } from "./components/AuthButtons";
 import AscariPopup from "./components/AscariPopup";
@@ -557,6 +558,16 @@ function Layout({ children }: { children: React.ReactNode }) {
       >
         Resoconto
       </button>
+
+{/*       <button
+  className={mobile ? "nav-mobile-link" : "btn-link"}
+  onClick={() => {
+    if (mobile) closeMobileMenu();
+    nav("/inspector/payments");
+  }}
+>
+  Pagamenti
+</button> */}
     </>
   );
 
@@ -896,6 +907,17 @@ function AppRoutes() {
             </Layout>
           }
         />
+
+        <Route
+        path="/inspector/payments"
+        element={
+          <Layout>
+            <RequireAuth>
+              <InspectorPayments />
+            </RequireAuth>
+          </Layout>
+        }
+      />
         <Route
           path="/payments/return"
           element={

@@ -374,6 +374,8 @@ function buildCarCardSelect(userId?: string): Prisma.CarSelect {
     fuelType: true,
     transmission: true,
     city: true,
+    latitude: true,
+    longitude: true,
     coverUrl: true,
     photos: true,
     ownerId: true,

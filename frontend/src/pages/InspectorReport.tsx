@@ -25,6 +25,16 @@ type PendingRequest = {
   };
 };
 
+type ReportCashout = {
+  id: number;
+  amountEur: number;
+  currency: string;
+  status: string;
+  stripeTransferId?: string | null;
+  paidAt?: string | null;
+  createdAt: string;
+};
+
 type ArchiveReport = {
   id: number;
   title?: string | null;
@@ -32,6 +42,7 @@ type ArchiveReport = {
   plate?: string | null;
   km?: number | null;
   createdAt: string;
+  cashout?: ReportCashout | null;
   car?: {
     id: number;
     make: string;
@@ -75,6 +86,7 @@ type PopupState = {
   variant?: "success" | "error" | "warning" | "info";
   confirmText?: string;
   cancelText?: string;
+  loading?: boolean;
   onConfirm?: () => void;
 };
 
@@ -103,6 +115,14 @@ function formatRange(startAt: string, endAt: string) {
   return `${new Date(startAt).toLocaleString()} → ${new Date(endAt).toLocaleString()}`;
 }
 
+function formatCashoutStatus(status?: string | null) {
+  const normalized = String(status || "").toUpperCase();
+  if (normalized === "PAID") return "Cashout richiesto";
+  if (normalized === "REQUESTED") return "Cashout in richiesta";
+  if (normalized === "FAILED") return "Cashout fallito";
+  return "Cashout";
+}
+
 export default function InspectorReport() {
   const { getToken } = useAuth();
   const navigate = useNavigate();
@@ -110,6 +130,7 @@ export default function InspectorReport() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [cashoutLoadingId, setCashoutLoadingId] = useState<number | null>(null);
 
   const [pending, setPending] = useState<PendingRequest[]>([]);
   const [archive, setArchive] = useState<ArchiveReport[]>([]);
@@ -292,6 +313,59 @@ export default function InspectorReport() {
     });
   }
 
+  async function requestCashout(reportId: number) {
+    try {
+      setCashoutLoadingId(reportId);
+      const headers = await authHeaders();
+
+      const { data } = await http.post(
+        `/stripe/inspection-reports/${reportId}/cashout`,
+        {},
+        { headers }
+      );
+
+      await loadAll();
+
+      openPopup({
+        open: true,
+        title: data?.alreadyRequested ? "Cashout già richiesto" : "Cashout inviato",
+        message:
+          data?.message ||
+          "La richiesta di cashout è partita, riceverai sul tuo conto i soldi 120 euro.",
+        variant: "success",
+        confirmText: "Chiudi",
+      });
+    } catch (e: any) {
+      const data = e?.response?.data;
+
+      if (data?.needsOnboarding && data?.accountLinkUrl) {
+        openPopup({
+          open: true,
+          title: "Completa i dati di pagamento",
+          message:
+            data?.message ||
+            "Per ricevere il cashout devi prima completare i dati di pagamento Stripe.",
+          variant: "warning",
+          confirmText: "Vai a Stripe",
+          cancelText: "Chiudi",
+          onConfirm: () => {
+            window.location.href = data.accountLinkUrl;
+          },
+        });
+        return;
+      }
+
+      openPopup({
+        open: true,
+        title: "Errore cashout",
+        message: data?.error ?? e?.message ?? "Errore richiesta cashout",
+        variant: "error",
+      });
+    } finally {
+      setCashoutLoadingId(null);
+    }
+  }
+
   async function downloadPdf(reportId: number, showSuccessPopup = false) {
     try {
       const headers = await authHeaders();
@@ -340,7 +414,7 @@ export default function InspectorReport() {
           variant={popup.variant}
           confirmText={popup.confirmText}
           cancelText={popup.cancelText}
-          loading={deleting}
+          loading={popup.loading || deleting}
           onConfirm={popup.onConfirm}
           onCancel={closePopup}
           onClose={closePopup}
@@ -441,107 +515,23 @@ export default function InspectorReport() {
               </select>
 
               <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
-                <input
-                  className="input"
-                  placeholder="Targa"
-                  value={form.plate}
-                  onChange={(e) => updateField("plate", e.target.value)}
-                />
-                <input
-                  className="input"
-                  placeholder="VIN"
-                  value={form.vin}
-                  onChange={(e) => updateField("vin", e.target.value)}
-                />
-                <input
-                  className="input"
-                  placeholder="KM"
-                  value={form.km}
-                  onChange={(e) => updateField("km", e.target.value)}
-                />
-                <input
-                  className="input"
-                  type="datetime-local"
-                  value={form.inspectionDate}
-                  onChange={(e) => updateField("inspectionDate", e.target.value)}
-                />
-                <input
-                  className="input"
-                  placeholder="Luogo"
-                  value={form.location}
-                  onChange={(e) => updateField("location", e.target.value)}
-                />
-                <input
-                  className="input"
-                  placeholder="Valore stimato (€)"
-                  value={form.estimatedValue}
-                  onChange={(e) => updateField("estimatedValue", e.target.value)}
-                />
+                <input className="input" placeholder="Targa" value={form.plate} onChange={(e) => updateField("plate", e.target.value)} />
+                <input className="input" placeholder="VIN" value={form.vin} onChange={(e) => updateField("vin", e.target.value)} />
+                <input className="input" placeholder="KM" value={form.km} onChange={(e) => updateField("km", e.target.value)} />
+                <input className="input" type="datetime-local" value={form.inspectionDate} onChange={(e) => updateField("inspectionDate", e.target.value)} />
+                <input className="input" placeholder="Luogo" value={form.location} onChange={(e) => updateField("location", e.target.value)} />
+                <input className="input" placeholder="Valore stimato (€)" value={form.estimatedValue} onChange={(e) => updateField("estimatedValue", e.target.value)} />
               </div>
 
-              <textarea
-                className="input"
-                placeholder="Note carrozzeria"
-                value={form.bodyworkNotes}
-                onChange={(e) => updateField("bodyworkNotes", e.target.value)}
-                rows={4}
-              />
-              <textarea
-                className="input"
-                placeholder="Note interni"
-                value={form.interiorNotes}
-                onChange={(e) => updateField("interiorNotes", e.target.value)}
-                rows={4}
-              />
-              <textarea
-                className="input"
-                placeholder="Note motore"
-                value={form.engineNotes}
-                onChange={(e) => updateField("engineNotes", e.target.value)}
-                rows={4}
-              />
-              <textarea
-                className="input"
-                placeholder="Note meccanica"
-                value={form.mechanicsNotes}
-                onChange={(e) => updateField("mechanicsNotes", e.target.value)}
-                rows={4}
-              />
-              <textarea
-                className="input"
-                placeholder="Note pneumatici"
-                value={form.tiresNotes}
-                onChange={(e) => updateField("tiresNotes", e.target.value)}
-                rows={4}
-              />
-              <textarea
-                className="input"
-                placeholder="Note elettronica"
-                value={form.electronicsNotes}
-                onChange={(e) => updateField("electronicsNotes", e.target.value)}
-                rows={4}
-              />
-              <textarea
-                className="input"
-                placeholder="Note test drive"
-                value={form.testDriveNotes}
-                onChange={(e) => updateField("testDriveNotes", e.target.value)}
-                rows={4}
-              />
-              <textarea
-                className="input"
-                placeholder="Difetti riscontrati"
-                value={form.defectsFound}
-                onChange={(e) => updateField("defectsFound", e.target.value)}
-                rows={4}
-              />
-              <textarea
-                className="input"
-                placeholder="Parere finale"
-                value={form.finalOpinion}
-                onChange={(e) => updateField("finalOpinion", e.target.value)}
-                rows={5}
-              />
+              <textarea className="input" placeholder="Note carrozzeria" value={form.bodyworkNotes} onChange={(e) => updateField("bodyworkNotes", e.target.value)} rows={4} />
+              <textarea className="input" placeholder="Note interni" value={form.interiorNotes} onChange={(e) => updateField("interiorNotes", e.target.value)} rows={4} />
+              <textarea className="input" placeholder="Note motore" value={form.engineNotes} onChange={(e) => updateField("engineNotes", e.target.value)} rows={4} />
+              <textarea className="input" placeholder="Note meccanica" value={form.mechanicsNotes} onChange={(e) => updateField("mechanicsNotes", e.target.value)} rows={4} />
+              <textarea className="input" placeholder="Note pneumatici" value={form.tiresNotes} onChange={(e) => updateField("tiresNotes", e.target.value)} rows={4} />
+              <textarea className="input" placeholder="Note elettronica" value={form.electronicsNotes} onChange={(e) => updateField("electronicsNotes", e.target.value)} rows={4} />
+              <textarea className="input" placeholder="Note test drive" value={form.testDriveNotes} onChange={(e) => updateField("testDriveNotes", e.target.value)} rows={4} />
+              <textarea className="input" placeholder="Difetti riscontrati" value={form.defectsFound} onChange={(e) => updateField("defectsFound", e.target.value)} rows={4} />
+              <textarea className="input" placeholder="Parere finale" value={form.finalOpinion} onChange={(e) => updateField("finalOpinion", e.target.value)} rows={5} />
 
               <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                 <button className="btn" type="submit" disabled={saving}>
@@ -570,67 +560,87 @@ export default function InspectorReport() {
       {!loading && archive.length === 0 && <p>Nessun resoconto presente.</p>}
 
       <div style={{ display: "grid", gap: 12, marginTop: 12 }}>
-        {archive.map((r) => (
-          <div
-            key={r.id}
-            style={{
-              border: "1px solid rgba(255,255,255,0.12)",
-              borderRadius: 12,
-              padding: 12,
-              background: "rgba(255,255,255,0.03)",
-            }}
-          >
-            <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-              {r.car?.coverUrl ? (
-                <img
-                  src={r.car.coverUrl}
-                  alt=""
-                  style={{
-                    width: 90,
-                    height: 60,
-                    objectFit: "cover",
-                    borderRadius: 10,
-                  }}
-                />
-              ) : null}
+        {archive.map((r) => {
+          const cashoutDone = !!r.cashout;
+          return (
+            <div
+              key={r.id}
+              style={{
+                border: "1px solid rgba(255,255,255,0.12)",
+                borderRadius: 12,
+                padding: 12,
+                background: "rgba(255,255,255,0.03)",
+              }}
+            >
+              <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+                {r.car?.coverUrl ? (
+                  <img
+                    src={r.car.coverUrl}
+                    alt=""
+                    style={{
+                      width: 90,
+                      height: 60,
+                      objectFit: "cover",
+                      borderRadius: 10,
+                    }}
+                  />
+                ) : null}
 
-              <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 700 }}>
-                  {r.car ? `${r.car.make} ${r.car.model} (${r.car.year})` : "Resoconto"}
-                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 700 }}>
+                    {r.car ? `${r.car.make} ${r.car.model} (${r.car.year})` : "Resoconto"}
+                  </div>
 
-                <div style={{ opacity: 0.85, marginTop: 4 }}>
-                  {r.title || "Resoconto perizia"}
-                </div>
+                  <div style={{ opacity: 0.85, marginTop: 4 }}>
+                    {r.title || "Resoconto perizia"}
+                  </div>
 
-                <div style={{ opacity: 0.75, marginTop: 4 }}>
-                  Esito: <b>{r.overallStatus || "-"}</b> • Targa: <b>{r.plate || "-"}</b> • KM: <b>{r.km ?? "-"}</b>
-                </div>
+                  <div style={{ opacity: 0.75, marginTop: 4 }}>
+                    Esito: <b>{r.overallStatus || "-"}</b> • Targa: <b>{r.plate || "-"}</b> • KM: <b>{r.km ?? "-"}</b>
+                  </div>
 
-                <div style={{ opacity: 0.7, marginTop: 4 }}>
-                  Creato il {new Date(r.createdAt).toLocaleString("it-IT")}
-                </div>
+                  <div style={{ opacity: 0.7, marginTop: 4 }}>
+                    Creato il {new Date(r.createdAt).toLocaleString("it-IT")}
+                  </div>
 
-                <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
-                  <button className="btn" onClick={() => downloadPdf(r.id, true)}>
-                    Scarica PDF
-                  </button>
+                  {r.cashout ? (
+                    <div style={{ opacity: 0.82, marginTop: 6 }}>
+                      <b>{formatCashoutStatus(r.cashout.status)}</b> • {r.cashout.amountEur} €
+                      {r.cashout.paidAt ? ` • ${new Date(r.cashout.paidAt).toLocaleString("it-IT")}` : ""}
+                    </div>
+                  ) : null}
 
-                  <button
-                    className="btn secondary"
-                    onClick={() => navigate(`/inspector/report/${r.id}`)}
-                  >
-                    Visualizza
-                  </button>
+                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
+                    <button className="btn" onClick={() => downloadPdf(r.id, true)}>
+                      Scarica PDF
+                    </button>
 
-                  <button className="btn secondary" onClick={() => deleteReport(r.id)}>
-                    Elimina
-                  </button>
+                    <button className="btn secondary" onClick={() => navigate(`/inspector/report/${r.id}`)}>
+                      Visualizza
+                    </button>
+
+                    <button className="btn secondary" onClick={() => deleteReport(r.id)} disabled={cashoutDone}>
+                      Elimina
+                    </button>
+
+                    <button
+                      className="btn"
+                      type="button"
+                      disabled={cashoutDone || cashoutLoadingId === r.id}
+                      onClick={() => requestCashout(r.id)}
+                    >
+                      {cashoutLoadingId === r.id
+                        ? "Invio cashout..."
+                        : cashoutDone
+                        ? "Cashout richiesto"
+                        : "Cashout 120€"}
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
