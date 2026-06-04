@@ -838,7 +838,43 @@ update 20/05/2026
 2. predisporre bucket s3 per caricare sopra le immagini
 
 resconto giornata
-spostato il peso delle immagini fuori dal database e alleggerito le API GET
+1. spostato il peso delle immagini fuori dal database e alleggerito le API GET
 Prima il DB conteneva immagini in base64, quindi dentro coverUrl e/o photos avevi stringhe enormi tipo tutta l'immagini
 questo rendeva le API pesantissime, ora il DB non salva più immagini intera salva solo URL s3
 Prima le GET caricavano troppi dati dal DB, perché usavano spesso include o restituivano tutto il modello Car.
+
+2. riscontrato problema con mapbox risolvere
+3. inserire il qr code dinamico con la creazione della card
+4. sistemare carosello
+
+sal 23/05/2026
+1. se metti qr code scontistica e generazione qr code automatico(qr code + cornice ascari)
+2. modificare pop up e metodo inserimento data 
+3. sistemare mapbox 
+
+update 27/05/2026
+1. sistemato mapbox c'era un problema sul recuperare le info di lat e log dalla funzione buildCarCardSelect
+2. sistemato il carosello, il comportamento è dentro scrollTo() perché si sta facendo il clamp e non permette di tornare all'inizio
+    ora con la modifica "loop" moderno 
+
+
+sal 29/05/2026
+1. pagamento periziatore, con stripe account + tasto cashout una volta finito la perizia e nella sezione resoconto
+2. prezzo fisso del periziatore 1 e inserire nel calcolatore della card.
+3. creazione qr-code dinamico dell'auto e verifica con foto caricata del qr-code applicato sull'auto per lo sconto
+4. ispezionare meglio stripe sezione pagamenti 
+5. iniziare a vedere per strategia marketing/social
+
+
+update 31/05/2026
+1. pagamento periziatore 
+    Abbiamo implementato il flusso cashout periziatore: ogni resoconto ora può generare una richiesta da 120€ tramite Stripe Connect,
+    con onboarding Stripe se l’account non è ancora abilitato.
+    Abbiamo aggiunto anche l’area pagamenti periziatore, lo storico delle transazioni cashout e il blocco per evitare doppi cashout sullo stesso resoconto.
+2. prezzo fisso
+    Abbiamo introdotto una nuova voce economica chiamata Commissione Periziatore (120 €) nel flusso di vendita ASCARI. 
+    Questa commissione viene sottratta dal prezzo lordo insieme alla commissione Ascari del 10%, 
+    ma solo se l'auto non è già periziata (isPeriziata = false); se la perizia esiste già, il costo viene automaticamente azzerato.
+    La modifica è stata applicata sia nelle schermate di creazione/modifica veicolo sia nella configurazione pagamento e chat tra acquirente e venditore. 
+    Inoltre abbiamo aggiornato backend, database e API affinché il valore inspectionFeeEur venga salvato, 
+    restituito correttamente dalla GET /chat/:id e mostrato nel riepilogo economico della vendita.

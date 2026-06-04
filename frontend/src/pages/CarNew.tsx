@@ -83,6 +83,7 @@ const REQUIRED_FIELD_LABELS: Record<RequiredFieldKey, string> = {
 };
 
 const ASCARI_FEE_RATE = 0.1;
+const INSPECTION_FEE_EUR = 120;
 
 type OfferPriceValue = number | '';
 
@@ -93,6 +94,7 @@ type OfferPriceInputBlockProps = {
   inputClassName: string;
   hasError: boolean;
   showBreakdown: boolean;
+  inspectionFeeEnabled: boolean;
 };
 
 function parseOfferPrice(value: OfferPriceValue): number {
@@ -117,11 +119,13 @@ function OfferPriceInputBlock({
   inputClassName,
   hasError,
   showBreakdown,
+  inspectionFeeEnabled,
 }: OfferPriceInputBlockProps) {
   const gross = parseOfferPrice(value);
   const hasValue = gross > 0;
   const ascariFee = hasValue ? gross * ASCARI_FEE_RATE : 0;
-  const sellerNet = hasValue ? gross - ascariFee : 0;
+  const inspectionFee = hasValue && inspectionFeeEnabled ? INSPECTION_FEE_EUR : 0;
+  const sellerNet = hasValue ? Math.max(gross - ascariFee - inspectionFee, 0) : 0;
 
   return (
     <div className={`ascari-offer-price-item ${hasError ? 'is-error' : ''}`}>
@@ -151,7 +155,10 @@ function OfferPriceInputBlock({
             <span>Commissione Ascari 10%</span>
             <strong>{hasValue ? formatAscariEuro(ascariFee) : '—'}</strong>
           </div>
-
+          <div className="ascari-offer-breakdown-box">
+            <span>Commissione periziatore</span>
+            <strong>{hasValue ? formatAscariEuro(inspectionFee) : '—'}</strong>
+          </div>
           <div className="ascari-offer-breakdown-box net">
             <span>Netto venditore</span>
             <strong>{hasValue ? formatAscariEuro(sellerNet) : '—'}</strong>
@@ -715,6 +722,7 @@ export default function CarNew() {
                 inputClassName={getFieldClass('offerPrice1')}
                 hasError={hasFieldError('offerPrice1')}
                 showBreakdown={acceptedPricesOpen}
+                inspectionFeeEnabled={true}
               />
 
               <OfferPriceInputBlock
@@ -724,6 +732,7 @@ export default function CarNew() {
                 inputClassName={getFieldClass('offerPrice2')}
                 hasError={hasFieldError('offerPrice2')}
                 showBreakdown={acceptedPricesOpen}
+                inspectionFeeEnabled={true}
               />
 
               <OfferPriceInputBlock
@@ -733,6 +742,7 @@ export default function CarNew() {
                 inputClassName={getFieldClass('offerPrice3')}
                 hasError={hasFieldError('offerPrice3')}
                 showBreakdown={acceptedPricesOpen}
+                inspectionFeeEnabled={true}
               />
             </div>
 

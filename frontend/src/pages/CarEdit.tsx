@@ -41,6 +41,7 @@ type Car = {
   city?: string | null;
   latitude?: number | null;
   longitude?: number | null;
+  isPeriziata?: boolean | null;
 };
 
 type RequiredFieldKey =
@@ -71,6 +72,7 @@ const REQUIRED_FIELD_LABELS: Record<RequiredFieldKey, string> = {
 };
 
 const ASCARI_FEE_RATE = 0.1;
+const INSPECTION_FEE_EUR = 120;
 
 type OfferPriceValue = number | '';
 
@@ -81,6 +83,7 @@ type OfferPriceInputBlockProps = {
   inputClassName: string;
   hasError: boolean;
   showBreakdown: boolean;
+  inspectionFeeEnabled: boolean;
 };
 
 function parseOfferPrice(value: OfferPriceValue): number {
@@ -105,11 +108,13 @@ function OfferPriceInputBlock({
   inputClassName,
   hasError,
   showBreakdown,
+  inspectionFeeEnabled,
 }: OfferPriceInputBlockProps) {
   const gross = parseOfferPrice(value);
   const hasValue = gross > 0;
   const ascariFee = hasValue ? gross * ASCARI_FEE_RATE : 0;
-  const sellerNet = hasValue ? gross - ascariFee : 0;
+  const inspectionFee = hasValue && inspectionFeeEnabled ? INSPECTION_FEE_EUR : 0;
+  const sellerNet = hasValue ? Math.max(gross - ascariFee - inspectionFee, 0) : 0;
 
   return (
     <div className={`ascari-offer-price-item ${hasError ? 'is-error' : ''}`}>
@@ -138,6 +143,15 @@ function OfferPriceInputBlock({
           <div className="ascari-offer-breakdown-box">
             <span>Commissione Ascari 10%</span>
             <strong>{hasValue ? formatAscariEuro(ascariFee) : '—'}</strong>
+          </div>
+
+          <div className="ascari-offer-breakdown-box">
+            <span>
+              {inspectionFeeEnabled
+                ? 'Commissione periziatore'
+                : 'Commissione periziatore già coperta'}
+            </span>
+            <strong>{hasValue ? formatAscariEuro(inspectionFee) : '—'}</strong>
           </div>
 
           <div className="ascari-offer-breakdown-box net">
@@ -180,6 +194,7 @@ export default function CarEdit() {
   const [city, setCity] = useState('');
   const [latitude, setLatitude] = useState<number | null>(null);
   const [longitude, setLongitude] = useState<number | null>(null);
+  const [isPeriziata, setIsPeriziata] = useState(false);
 
   const [color, setColor] = useState('');
   const [torqueNm, setTorqueNm] = useState<number | ''>('');
@@ -271,6 +286,7 @@ export default function CarEdit() {
         setOfferPrice1(data.offerPrice1 ?? '');
         setOfferPrice2(data.offerPrice2 ?? '');
         setOfferPrice3(data.offerPrice3 ?? '');
+        setIsPeriziata(!!data.isPeriziata);
       } catch (e: any) {
         setErr(
           e?.response?.data?.error ||
@@ -671,6 +687,7 @@ export default function CarEdit() {
                 inputClassName={getFieldClass('offerPrice1')}
                 hasError={hasFieldError('offerPrice1')}
                 showBreakdown={acceptedPricesOpen}
+                inspectionFeeEnabled={!isPeriziata}
               />
 
               <OfferPriceInputBlock
@@ -680,6 +697,7 @@ export default function CarEdit() {
                 inputClassName={getFieldClass('offerPrice2')}
                 hasError={hasFieldError('offerPrice2')}
                 showBreakdown={acceptedPricesOpen}
+                inspectionFeeEnabled={!isPeriziata}
               />
 
               <OfferPriceInputBlock
@@ -689,6 +707,7 @@ export default function CarEdit() {
                 inputClassName={getFieldClass('offerPrice3')}
                 hasError={hasFieldError('offerPrice3')}
                 showBreakdown={acceptedPricesOpen}
+                inspectionFeeEnabled={!isPeriziata}
               />
             </div>
 
