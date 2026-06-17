@@ -9,11 +9,13 @@ import {
   getMyGarage,
   getStripeAccountStatus,
   createStripeOnboardingLink,
+  getCarQrStats,
 } from "../api";
 import { Link, useNavigate } from "react-router-dom";
 import LikeButton from "../components/LikeButton";
 import { http } from "../api";
 import AscariPopup from "../components/AscariPopup";
+import QrStatsModal, { QrStats } from "../components/QrStatsModal";
 
 type Car = {
   id: number;
@@ -278,6 +280,9 @@ function MyGarageContent() {
 
   const [stripeStatus, setStripeStatus] = useState<StripeAccountStatus | null>(null);
   const [stripeBusy, setStripeBusy] = useState(false);
+  const [qrStatsOpen, setQrStatsOpen] = useState(false);
+  const [qrStatsLoading, setQrStatsLoading] = useState(false);
+  const [qrStats, setQrStats] = useState<QrStats | null>(null);
 
   const [popup, setPopup] = useState<PopupState>({
     open: false,
@@ -595,6 +600,41 @@ function MyGarageContent() {
     }
   }
 
+  async function openQrStats(car: Car) {
+    try {
+      const token = await getToken();
+
+      if (!token) {
+        openPopup({
+          open: true,
+          title: "Accesso richiesto",
+          message: "Devi essere loggato per vedere le statistiche.",
+          variant: "warning",
+        });
+        return;
+      }
+
+      setQrStatsLoading(true);
+
+      const data = await getCarQrStats(car.id, token);
+
+      setQrStats(data);
+      setQrStatsOpen(true);
+    } catch (e: any) {
+      openPopup({
+        open: true,
+        title: "Errore statistiche",
+        message:
+          e?.response?.data?.error ||
+          e?.message ||
+          "Impossibile caricare le statistiche QR.",
+        variant: "error",
+      });
+    } finally {
+      setQrStatsLoading(false);
+    }
+  }
+
   if (loading) return <div>Caricamento garage...</div>;
   if (error) return <div style={{ color: "var(--danger)" }}>{error}</div>;
 
@@ -622,6 +662,15 @@ function MyGarageContent() {
           onClose={closePopup}
         />
       )}
+      {qrStatsOpen && qrStats && (
+          <QrStatsModal
+            stats={qrStats}
+            onClose={() => {
+              setQrStatsOpen(false);
+              setQrStats(null);
+            }}
+          />
+        )}
 
       <h1 style={{ marginBottom: "1.5rem" }}>Il mio garage</h1>
 
@@ -840,6 +889,14 @@ function MyGarageContent() {
                         Configura pagamento
                       </button>
                     )}
+                    <button
+                      className="btn secondary"
+                      type="button"
+                      onClick={() => openQrStats(car)}
+                      disabled={qrStatsLoading}
+                    >
+                      {qrStatsLoading ? "Caricamento..." : "Statistiche"}
+                    </button>
 
                     <LikeButton
                       carId={car.id}

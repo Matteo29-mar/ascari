@@ -6,6 +6,7 @@ import { PrismaClient } from "@prisma/client";
 import { z } from "zod";
 import { clerkMiddleware } from "@clerk/express";
 import path from "path";
+import cookieParser from "cookie-parser";
 
 import carsRouter from "./routes/cars";
 import offerRoutes from "./routes/offerts";
@@ -16,6 +17,7 @@ import inspectionReportsRouter from "./routes/inspectionReports";
 import stripeRoutes from "./routes/stripe";
 import historyRouter from "./routes/history";
 import soldCarsRoutes from "./routes/soldCars";
+import qrRoutes from "./routes/qr";
 
 import { startSoldCarsCleanupJob } from "./jobs/soldCarsCleanup";
 
@@ -28,7 +30,7 @@ const ORIGIN = process.env.CORS_ORIGIN || "http://localhost:5173";
 // body parser
 app.use(express.json({ limit: "25mb" }));
 app.use(express.urlencoded({ extended: true, limit: "25mb" }));
-
+app.use(cookieParser());
 // CORS
 app.use(
   cors({
@@ -71,6 +73,9 @@ app.get("/health", (_req, res) => {
 // static uploads
 app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 
+
+// route qr tracking pubblico
+app.use("/qr", qrRoutes);
 // API routes
 app.use("/api/cars", carsRouter);
 app.use("/api/offers", offerRoutes);
@@ -83,6 +88,7 @@ app.use("/api/history", historyRouter);
 
 // Route dedicata al ciclo auto vendute
 app.use("/api/sold-cars", soldCarsRoutes);
+
 
 // Avvio job automatico rimozione visuale auto vendute.
 // Ogni 60 minuti controlla le auto SOLD_PENDING_REMOVAL con removalScheduledAt scaduto

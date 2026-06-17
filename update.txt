@@ -885,3 +885,23 @@ update 31/05/2026
     La modifica è stata applicata sia nelle schermate di creazione/modifica veicolo sia nella configurazione pagamento e chat tra acquirente e venditore. 
     Inoltre abbiamo aggiornato backend, database e API affinché il valore inspectionFeeEur venga salvato, 
     restituito correttamente dalla GET /chat/:id e mostrato nel riepilogo economico della vendita.
+
+
+sal 05/06/2026
+1. il flag periziata SI/NO non funziona correttamente,  perizia non viene caricata dal periziatore in automatico e il flag non 
+si trasforma da NO a Si, stessa cosa se carico manualmente
+2. visionare meglio tasti perizia caricata perchè compratore scarica la perizia, ma il venditore gli dice di caricarla e di contattare il periziatore
+3. slegare il cashout effettivo con il costo periziatore della vendita 
+4. trovare un modo più semplice per validare qr code su immagine 
+
+update 10/06/2026
+1. sistemato lo stato flag si e no adesso se viene effettuata perizia caricata automaticamente
+2. anche il sistema tasti perizia tornato a posto
+3. slegato cashout effettivo da costo di vendita
+4. vedere al sal se ha senso far fare la validazione automatica, manuale o togliere e tenere solo generazione qr code e poi validazione farlo più avanti
+
+
+update 16/06/2026
+1. installazione nuove dipendenze npm install cookie-parser e npm install -D @types/cookie-parser
+2. portato in locale la generazione del qr-code con le statistiche
+    prossimo step quello di portare in test.
