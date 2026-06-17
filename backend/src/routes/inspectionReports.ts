@@ -257,6 +257,7 @@ router.post("/", async (req, res) => {
         data: {
           isPeriziata: true,
           periziaUploadedAt: new Date(),
+          periziaDocUrl: `/cars/${inspection.carId}/perizia/download`,
         },
       });
 

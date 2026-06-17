@@ -18,6 +18,7 @@ import {
 } from '../constants/carOptions';
 import SelectableDropdown from '../components/SelectableDropdown';
 import AddressAutocomplete from '../components/AddressAutocomplete';
+import { downloadCarQrCode } from "../utils/qrCode";
 
 function uid() {
   return Math.random().toString(36).slice(2) + Date.now().toString(36);
@@ -451,6 +452,19 @@ export default function CarNew() {
       });
 
       if (draftId) removeDraft(draftId);
+
+      try {
+        if (data?.qrUrl) {
+          await downloadCarQrCode({
+            qrUrl: data.qrUrl,
+            carId: data.id,
+            make: data.make,
+            model: data.model,
+          });
+        }
+      } catch (qrError) {
+        console.error("Errore download QR:", qrError);
+      }
 
       setOk('Salvato (#' + data.id + ')');
       setTimeout(() => nav(`/cars/${data.id}`), 400);

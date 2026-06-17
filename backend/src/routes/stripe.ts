@@ -15,7 +15,7 @@ const INSPECTION_CASHOUT_AMOUNT_EUR = 120;
 function computeSalePaymentBreakdown(salePriceEur: number, isPeriziata: boolean) {
   const gross = Math.round(Number(salePriceEur));
   const ascariFeeEur = Math.round((gross * ASCARI_FEE_PERCENT) / 100);
-  const inspectionFeeEur = isPeriziata ? 0 : INSPECTION_CASHOUT_AMOUNT_EUR;
+  const inspectionFeeEur = INSPECTION_CASHOUT_AMOUNT_EUR;
   const sellerNetEur = Math.max(gross - ascariFeeEur - inspectionFeeEur, 0);
 
   return {

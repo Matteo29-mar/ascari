@@ -6,6 +6,8 @@ import AscariPopup from "../components/AscariPopup";
 import { useAuth, useClerk } from "@clerk/clerk-react";
 import { useOffers } from "../context/OfferContext";
 import SoldCarPopup from "../components/SoldCarPopup";
+import { getCarQrCode } from "../api";
+import { downloadCarQrCode } from "../utils/qrCode";
 
 type CarMarketStatus = "AVAILABLE" | "SOLD_PENDING_REMOVAL" | "REMOVED_AFTER_SALE";
 
@@ -370,6 +372,39 @@ export default function CarDetail() {
     });
   }
 
+  async function downloadQrCode() {
+    try {
+      if (!isSignedIn) {
+        openSignIn({
+          redirectUrl: window.location.href,
+        });
+        return;
+      }
+
+      const token = await getToken();
+
+      if (!token) {
+        openSignIn({ redirectUrl: window.location.href });
+        return;
+      }
+
+      const data = await getCarQrCode(currentCar.id, token);
+
+      if (!data?.qrUrl) {
+        throw new Error("URL QR non disponibile");
+      }
+
+      await downloadCarQrCode({
+        qrUrl: data.qrUrl,
+        carId: currentCar.id,
+        make: currentCar.make,
+        model: currentCar.model,
+      });
+    } catch (e: any) {
+      openErrorPopup(e?.message || "Errore download QR", "Download QR non riuscito");
+    }
+  }
+
   async function downloadPerizia() {
     try {
       if (!isSignedIn) {
@@ -469,16 +504,25 @@ export default function CarDetail() {
           style={{ justifyContent: "flex-end", gap: 8, marginTop: 8 }}
         >
           {canEdit && (
-            <>
-              {!isSold && (
-                <Link
+              <>
+                <button
                   className="btn secondary"
-                  to={`/cars/edit/${currentCar.id}`}
-                  title="Modifica veicolo"
+                  type="button"
+                  onClick={downloadQrCode}
+                  title="Scarica QR Code"
                 >
-                  Modifica
-                </Link>
-              )}
+                  Scarica QR
+                </button>
+
+                {!isSold && (
+                  <Link
+                    className="btn secondary"
+                    to={`/cars/edit/${currentCar.id}`}
+                    title="Modifica veicolo"
+                  >
+                    Modifica
+                  </Link>
+                )}
 
               <button
                 className="btn"

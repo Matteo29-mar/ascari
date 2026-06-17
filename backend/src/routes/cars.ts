@@ -19,6 +19,12 @@ import {
   runSoldCarsVisualCleanup,
 } from "../lib/carSaleLifecycle";
 
+import {
+  buildCarQrUrl,
+  createCarQrToken,
+  ensureCarQrToken,
+} from "../lib/carQr";
+
 const router = express.Router();
 
 const uploadDir = path.join(process.cwd(), "uploads", "perizie");
@@ -379,7 +385,23 @@ function buildCarCardSelect(userId?: string): Prisma.CarSelect {
     coverUrl: true,
     photos: true,
     ownerId: true,
+
+    isPeriziata: true,
+    periziaDocUrl: true,
+    periziaUploadedAt: true,
+
+    paymentEnabled: true,
+    salePriceEur: true,
+    ascariFeeEur: true,
+    inspectionFeeEur: true,
+    sellerNetEur: true,
+    paymentStatus: true,
+
     marketStatus: true,
+    soldAt: true,
+    removalScheduledAt: true,
+    visuallyRemovedAt: true,
+
     createdAt: true,
     owner: {
       select: {
@@ -663,6 +685,8 @@ router.post("/", async (req, res) => {
       });
     }
 
+    const qrToken = createCarQrToken();
+
     const car = await prisma.car.create({
       data: {
         make: String(make).trim(),
@@ -699,11 +723,17 @@ router.post("/", async (req, res) => {
         priceEur: priceEur === "" || priceEur === undefined ? null : Number(priceEur),
 
         marketStatus: "AVAILABLE",
+
+        qrToken,
+        qrCodeCreatedAt: new Date(),
       },
       select: buildCarCardSelect(user.id),
     });
 
-    return res.json(toCarCard(car, true));
+    return res.json({
+  ...toCarCard(car, true),
+  qrUrl: buildCarQrUrl(qrToken),
+  });
   } catch (err: any) {
     console.error("POST /api/cars error:", err);
     return res.status(500).json({ error: err?.message || "Error creating car" });
@@ -1264,6 +1294,204 @@ router.get("/:id/availability", async (req, res) => {
     return res.status(500).json({
       error: "Errore controllo disponibilità auto",
     });
+  }
+});
+
+/**
+ * GET /api/cars/:id/qr
+ */
+router.get("/:id/qr", async (req, res) => {
+  const { userId: clerkUserId } = getAuth(req);
+  const carId = Number(req.params.id);
+
+  if (!clerkUserId) {
+    return res.status(401).json({ error: "Not authenticated" });
+  }
+
+  if (!Number.isFinite(carId) || carId <= 0) {
+    return res.status(400).json({ error: "Car id non valido" });
+  }
+
+  try {
+    const user = await prisma.user.findUnique({
+      where: { clerkId: clerkUserId },
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    const car = await prisma.car.findUnique({
+      where: { id: carId },
+      select: {
+        id: true,
+        ownerId: true,
+        make: true,
+        model: true,
+        qrToken: true,
+      },
+    });
+
+    if (!car) {
+      return res.status(404).json({ error: "Car not found" });
+    }
+
+    if (car.ownerId !== user.id) {
+      return res.status(403).json({ error: "Not allowed" });
+    }
+
+    const qrToken = await ensureCarQrToken(car.id);
+
+    if (!qrToken) {
+      return res.status(500).json({ error: "Impossibile generare QR" });
+    }
+
+    return res.json({
+      carId: car.id,
+      make: car.make,
+      model: car.model,
+      qrUrl: buildCarQrUrl(qrToken),
+    });
+  } catch (e) {
+    console.error("GET /api/cars/:id/qr error:", e);
+    return res.status(500).json({ error: "Errore QR" });
+  }
+});
+
+/**
+ * GET /api/cars/:id/qr-stats
+ */
+router.get("/:id/qr-stats", async (req, res) => {
+  const { userId: clerkUserId } = getAuth(req);
+  const carId = Number(req.params.id);
+
+  if (!clerkUserId) {
+    return res.status(401).json({ error: "Not authenticated" });
+  }
+
+  if (!Number.isFinite(carId) || carId <= 0) {
+    return res.status(400).json({ error: "Car id non valido" });
+  }
+
+  try {
+    const user = await prisma.user.findUnique({
+      where: { clerkId: clerkUserId },
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    const car = await prisma.car.findUnique({
+      where: { id: carId },
+      select: {
+        id: true,
+        ownerId: true,
+        make: true,
+        model: true,
+        title: true,
+      },
+    });
+
+    if (!car) {
+      return res.status(404).json({ error: "Car not found" });
+    }
+
+    if (car.ownerId !== user.id) {
+      return res.status(403).json({ error: "Not allowed" });
+    }
+
+    const now = new Date();
+
+    const startToday = new Date(now);
+    startToday.setHours(0, 0, 0, 0);
+
+    const start7Days = new Date(now);
+    start7Days.setDate(start7Days.getDate() - 7);
+
+    const start30Days = new Date(now);
+    start30Days.setDate(start30Days.getDate() - 30);
+
+    const [
+      totalScans,
+      scansToday,
+      scansLast7Days,
+      scansLast30Days,
+      offersReceived,
+      likesReceived,
+      lastScan,
+      uniqueVisitorsRaw,
+    ] = await Promise.all([
+      prisma.qrScan.count({
+        where: { carId },
+      }),
+
+      prisma.qrScan.count({
+        where: {
+          carId,
+          scannedAt: { gte: startToday },
+        },
+      }),
+
+      prisma.qrScan.count({
+        where: {
+          carId,
+          scannedAt: { gte: start7Days },
+        },
+      }),
+
+      prisma.qrScan.count({
+        where: {
+          carId,
+          scannedAt: { gte: start30Days },
+        },
+      }),
+
+      prisma.offer.count({
+        where: { carId },
+      }),
+
+      prisma.like.count({
+        where: { carId },
+      }),
+
+      prisma.qrScan.findFirst({
+        where: { carId },
+        orderBy: { scannedAt: "desc" },
+        select: { scannedAt: true },
+      }),
+
+      prisma.qrScan.groupBy({
+        by: ["visitorHash"],
+        where: { carId },
+      }),
+    ]);
+
+    const uniqueVisitors = uniqueVisitorsRaw.length;
+
+    const conversionRate =
+      uniqueVisitors > 0
+        ? Math.round((offersReceived / uniqueVisitors) * 10000) / 100
+        : 0;
+
+    return res.json({
+      carId: car.id,
+      title: car.title,
+      make: car.make,
+      model: car.model,
+      totalScans,
+      uniqueVisitors,
+      scansToday,
+      scansLast7Days,
+      scansLast30Days,
+      offersReceived,
+      likesReceived,
+      conversionRate,
+      lastScanAt: lastScan?.scannedAt ?? null,
+    });
+  } catch (e) {
+    console.error("GET /api/cars/:id/qr-stats error:", e);
+    return res.status(500).json({ error: "Errore statistiche QR" });
   }
 });
 

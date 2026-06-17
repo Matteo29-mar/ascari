@@ -224,7 +224,7 @@ const paymentActionsDisabled = carSold || carRemovedAfterSale;
   const paymentPreview = useMemo(() => {
     const salePrice = parsePositiveInt(paymentPriceInput);
     const ascariFee = Math.round((salePrice * ASCARI_FEE_PERCENT) / 100);
-    const inspectionFee = currentCar?.isPeriziata ? 0 : INSPECTION_FEE_EUR;
+    const inspectionFee = INSPECTION_FEE_EUR;
     const sellerNet = Math.max(salePrice - ascariFee - inspectionFee, 0);
 
     return {
@@ -910,11 +910,7 @@ const paymentActionsDisabled = carSold || carRemovedAfterSale;
                 highlight
               />
               <PaymentValueCard
-                label={
-                  currentCar.isPeriziata
-                    ? "Commissione periziatore già coperta"
-                    : "Commissione periziatore"
-                }
+                label="Commissione periziatore"
                 value={
                   paymentPreview.salePrice > 0
                     ? formatEuro(paymentPreview.inspectionFee)

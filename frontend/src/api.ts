@@ -138,3 +138,19 @@ export async function refundPayment(paymentId: number, token: string) {
   );
   return res.data;
 }
+
+export async function getCarQrCode(carId: number, token: string) {
+  const res = await http.get(`/cars/${carId}/qr`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  return res.data;
+}
+
+export async function getCarQrStats(carId: number, token: string) {
+  const res = await http.get(`/cars/${carId}/qr-stats`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  return res.data;
+}

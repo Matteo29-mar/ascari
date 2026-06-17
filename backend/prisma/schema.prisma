@@ -214,6 +214,10 @@ model Car {
 
   inspectionReports InspectionReport[]
 
+  qrToken         String?   @unique
+  qrCodeCreatedAt DateTime?
+  qrScans         QrScan[]
+
   @@index([make, model])
   @@index([latitude, longitude])
   @@index([ownerId])
@@ -221,6 +225,20 @@ model Car {
   @@index([marketStatus])
   @@index([removalScheduledAt])
   @@index([visuallyRemovedAt])
+}
+
+model QrScan {
+  id Int @id @default(autoincrement())
+
+  carId Int
+  car   Car @relation(fields: [carId], references: [id], onDelete: Cascade)
+
+  visitorHash String
+  userAgent   String?
+  scannedAt   DateTime @default(now())
+
+  @@index([carId, scannedAt])
+  @@index([carId, visitorHash])
 }
 
 model InspectionReport {
