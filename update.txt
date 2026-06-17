@@ -898,3 +898,8 @@ update 16/06/2026
 1. installazione nuove dipendenze npm install cookie-parser e npm install -D @types/cookie-parser
 2. portato in locale la generazione del qr-code con le statistiche
     prossimo step quello di portare in test.
+
+
+update 17/06/2026
+1. tenere traccia url .env frontend è questo VITE_API_URL=https://api.myascari.com/api
+2. qr-code su test non funziona, portare modifiche 

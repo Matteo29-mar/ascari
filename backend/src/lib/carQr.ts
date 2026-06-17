@@ -6,18 +6,39 @@ export function createCarQrToken() {
 }
 
 export function buildBackendPublicUrl() {
-  return (process.env.BACKEND_PUBLIC_URL || "http://localhost:4002").replace(
-    /\/+$/,
-    ""
-  );
+  const configuredUrl = process.env.BACKEND_PUBLIC_URL?.trim();
+
+  if (configuredUrl) {
+    return configuredUrl.replace(/\/+$/, "");
+  }
+
+  if (process.env.NODE_ENV === "production") {
+    throw new Error(
+      "BACKEND_PUBLIC_URL non configurata in produzione. " +
+        "Imposta BACKEND_PUBLIC_URL=https://api.myascari.com"
+    );
+  }
+
+  return "http://localhost:4002";
 }
 
 export function buildFrontendPublicUrl() {
-  return (
-    process.env.FRONTEND_URL ||
-    process.env.CORS_ORIGIN ||
-    "http://localhost:5173"
-  ).replace(/\/+$/, "");
+  const configuredUrl =
+    process.env.FRONTEND_URL?.trim() ||
+    process.env.CORS_ORIGIN?.trim();
+
+  if (configuredUrl) {
+    return configuredUrl.replace(/\/+$/, "");
+  }
+
+  if (process.env.NODE_ENV === "production") {
+    throw new Error(
+      "FRONTEND_URL non configurata in produzione. " +
+        "Imposta FRONTEND_URL=https://myascari.com"
+    );
+  }
+
+  return "http://localhost:5173";
 }
 
 export function buildCarQrUrl(qrToken: string) {
