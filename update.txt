@@ -909,4 +909,22 @@ update 16/06/2026
 
 update 17/06/2026
 1. tenere traccia url .env frontend è questo VITE_API_URL=https://api.myascari.com/api
-2. qr-code su test non funziona, portare modifiche 
+2. qr-code su test non funziona, portare modifiche . Portate le modifiche in test segno gli step per portare modifiche 
+    1. accendere rds
+    2. accendere ec2 backend
+    3. aspettare il verde
+    4. avere già pushato su branch map
+    5. pull da git su ec2 
+    6. per frontend bisogna npm build nella cartella frontend e upload su s3  
+        aws s3 sync dist/ s3://NOME_BUCKET_FRONTEND --delete
+        dopo s3 invalidare cache cloudfront 
+        aws cloudfront create-invalidation --distribution-id ID_DISTRIBUZIONE --paths "/*"
+    7. down compose, build nuova e up -d del compose backend
+    8. se ci sono cambiamenti lato rds fare su ec2 questi comandi
+        docker compose run --rm backend npx prisma migrate deploy
+        docker compose run --rm backend npx prisma generate
+        docker compose up -d backend
+
+update 18/06/2026
+1. lato test funziona, implementare un qr-code più identificativo lato ascari
+2. mi dvo ricordare che nel .env devo inserire VITE_API_URL=http://localhost:4002/api
