@@ -8,6 +8,7 @@ import { loadDrafts, removeDraft, DraftCar } from "../../lib/drafts";
 import { useAuth, useClerk } from "@clerk/clerk-react";
 import LikeButton from "../components/LikeButton";
 import SearchBar from "../components/Search/SearchBar";
+import HomeHeroCarousel from "../components/HomeHeroCarousel";
 
 type Car = {
   id: number;
@@ -599,6 +600,7 @@ async function loadAll(nextPage = page, nextPageSize = pageSize) {
 
   return (
     <div>
+    <HomeHeroCarousel />
       <h1 className="h1">Auto disponibili</h1>
       <p className="muted">Cerca un modello oppure mostra i veicoli nelle vicinanze.</p>
 

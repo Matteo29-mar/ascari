@@ -928,3 +928,23 @@ update 17/06/2026
 update 18/06/2026
 1. lato test funziona, implementare un qr-code più identificativo lato ascari
 2. mi dvo ricordare che nel .env devo inserire VITE_API_URL=http://localhost:4002/api
+
+
+sal 20/06/2026
+1. dalla chat tornare indietro alla card dettaglio auto 
+2. perizia -> trovare sistema più carino per postare
+3. fare flussi testuali e flow chart 
+4. parlare statuto
+
+
+update 24/06/2026
+1. creato tasto dettaglio auto nella chat 
+
+
+update 08/07/2026
+1. dopo una serie di chiacchierate, siamo giusti alla conclusione di lanciare ascari ad novembre
+    stop funzionalità nuove, tutto su marketing, risoluzione bug e usabilità
+2. idea di inserire video che facciano capire cosa è ascari per far rimanere il pubblico
+    slide1- Cinematic shot of a luxury sports car driving fast on a scenic mountain road, golden hour, smooth camera tracking, premium automotive commercial style, realistic, no text, 5 seconds, 16:9
+    slide2- Professional mechanic inspecting a used car in a clean modern workshop, checking details with a tablet and flashlight, premium trustworthy atmosphere, cinematic lighting, realistic, no text, 5 seconds, 16:9
+    slide3- Close-up cinematic shot of two people shaking hands and handing over car keys, modern dealership or elegant outdoor setting, trust and satisfaction mood, realistic, premium commercial style, no text, 5 seconds, 16:9
