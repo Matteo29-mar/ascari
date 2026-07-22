@@ -246,6 +246,11 @@ const paymentActionsDisabled = carSold || carRemovedAfterSale;
     else navigate("/chat");
   }
 
+  function goToCarDetail() {
+    if (!currentCar?.id) return;
+    navigate(`/cars/${currentCar.id}`);
+  }
+
   function resizeTextarea() {
     const el = textareaRef.current;
     if (!el) return;
@@ -548,11 +553,29 @@ const paymentActionsDisabled = carSold || carRemovedAfterSale;
     <div style={{ padding: 20 }}>
       <h2 className="h2">Chat con {displayName}</h2>
 
-      <div className="chat-header">
-        <button onClick={goBack} className="btn secondary back-chat-btn">
-          ← Indietro
-        </button>
-      </div>
+      <div
+          className="chat-header"
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            gap: 12,
+          }}
+        >
+          <button onClick={goBack} className="btn secondary back-chat-btn">
+            ← Indietro
+          </button>
+
+          {currentCar?.id && (
+            <button
+              type="button"
+              className="btn secondary"
+              onClick={goToCarDetail}
+            >
+              Dettaglio auto
+            </button>
+          )}
+        </div>
 
       {isOfferChat && currentCar && (
         <div
