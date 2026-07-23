@@ -1,52 +1,212 @@
-# ASCARI — DEV (Auth + Nearby/Search)
+# 🚗 Ascari
 
-Obiettivo: ambiente funzionante **frontend+backend** con **registrazione/login (email+password)**, e pagina **Auto disponibili** con ricerca per modello e "Vicino a me". Pronto per estendere a **Google** e **Apple ID** (placeholders OAuth già previsti).
+Ascari è una web application dedicata alla compravendita di auto usate, progettata per rendere il processo di vendita e acquisto più semplice, trasparente e sicuro.
 
-## Requisiti
-- Node.js 20+
-- Docker (per Postgres)
+L'applicazione permette ai venditori di pubblicare i propri veicoli e ai compratori di cercare auto, inviare offerte, comunicare tramite una chat dedicata e consultare le informazioni della vettura. L'obiettivo del progetto è costruire una piattaforma moderna, scalabile e completamente cloud-native.
 
-## Database (Postgres)
-Avvia rapidamente un Postgres dedicato:
-```bash
-docker run -d --name ascari_auth_db -e POSTGRES_PASSWORD=ascari -e POSTGRES_USER=ascari -e POSTGRES_DB=ascari_auth -p 5433:5432 postgres:16
-```
-> Se usi `5433` sull'host, aggiorna `DATABASE_URL` in `backend/.env`.
+---
 
-per DB 
-```bash
-npx prisma studio
-
-## Backend
-```bash
-cd backend
-cp .env.example .env
-# Aggiorna DATABASE_URL se necessario
-# primo avvio in nuovo ambiente
-npm install
-npm run prisma:generate
-npm run prisma:migrate
-npm run prisma:seed # non più necessario
-npm run dev
-```
-- server su `http://localhost:4001`
+# Tecnologie utilizzate
 
 ## Frontend
-```bash
-cd ../frontend
-npm install
-npm run dev
+
+- React
+- TypeScript
+- Vite
+- React Router
+- CSS
+- Clerk Authentication
+- Mapbox
+
+---
+
+## Backend
+
+- Node.js
+- Express
+- TypeScript
+- Prisma ORM
+- PostgreSQL
+- JWT / Clerk
+
+---
+
+## Cloud & DevOps
+
+- AWS EC2
+- AWS RDS PostgreSQL
+- AWS S3
+- AWS CloudFront
+- AWS Route53
+- Docker
+- GitHub
+
+---
+
+# Architettura
+
 ```
-- app su `http://localhost:5173`
+                Browser
+                    │
+                    ▼
+          React + Vite Frontend
+                    │
+                    ▼
+            REST API (Express)
+                    │
+                    ▼
+             PostgreSQL Database
+```
 
-## OAuth (Google/Apple) — attivazione successiva
-- Inserisci le credenziali in `backend/.env`.
-- Implementa le rotte OAuth (commenti nel codice) con Passport o libreria equivalente.
-- Abilita i pulsanti nel frontend per puntare alle URL del backend.
+---
 
-## Credenziali demo
-- utente: `demo@ascari.local`
-- password: `password123`
+# Ambienti
 
-## Dati demo
-- auto con coordinate su Milano per testare "Vicino a me".
+## Ambiente Locale
+
+L'ambiente di sviluppo è completamente separato dalla produzione.
+
+### Frontend
+
+- React + Vite
+- esecuzione locale sulla porta 5173
+
+### Backend
+
+- Express
+- esecuzione locale sulla porta 4002
+
+### Database
+
+- PostgreSQL
+- eseguito tramite Docker
+
+```
+Frontend (localhost:5173)
+            │
+            ▼
+Backend (localhost:4002)
+            │
+            ▼
+Docker PostgreSQL
+```
+
+---
+
+## Ambiente Test / Produzione
+
+L'infrastruttura cloud è ospitata interamente su AWS.
+
+### Frontend
+
+Il frontend viene compilato tramite Vite e pubblicato su:
+
+- Amazon S3
+- distribuito tramite CloudFront
+
+```
+Utente
+   │
+   ▼
+CloudFront
+   │
+   ▼
+Amazon S3
+```
+
+---
+
+### Backend
+
+Il backend è ospitato su una macchina virtuale Amazon EC2.
+
+All'interno della macchina sono presenti:
+
+- Node.js
+- Express
+- Prisma
+- PM2 (process manager)
+- Nginx (reverse proxy)
+
+```
+Internet
+     │
+     ▼
+ Nginx
+     │
+     ▼
+Express API
+```
+
+---
+
+### Database
+
+Il database è completamente separato dal backend.
+
+Viene utilizzato:
+
+- Amazon RDS
+- PostgreSQL
+
+```
+EC2
+ │
+ ▼
+Amazon RDS PostgreSQL
+```
+
+---
+
+# Struttura del progetto
+
+```
+ascari/
+
+├── frontend/
+│   ├── src/
+│   ├── public/
+│   └── ...
+│
+├── backend/
+│   ├── prisma/
+│   ├── routes/
+│   ├── lib/
+│   └── ...
+│
+└── README.md
+```
+
+---
+
+# Funzionalità principali
+
+Attualmente Ascari permette di:
+
+- pubblicare un'auto
+- modificare un annuncio
+- eliminare un annuncio
+- ricerca per marca e modello
+- ricerca geografica ("Vicino a me")
+- visualizzazione mappa
+- gestione offerte
+- chat tra compratore e venditore
+- gestione preferiti
+- autenticazione utenti
+- QR Code associato al veicolo
+- perizie dei veicoli
+- garage personale
+
+---
+
+# Obiettivo del progetto
+
+Ascari nasce con l'obiettivo di costruire una piattaforma moderna per la compravendita di automobili, facendo leva su:
+
+- trasparenza
+- semplicità d'utilizzo
+- infrastruttura cloud scalabile
+- architettura facilmente estendibile
+- sviluppo orientato a nuove funzionalità (AI, pagamenti online, notifiche, mobile)
+
+L'architettura è progettata per consentire una crescita progressiva del progetto mantenendo separati frontend, backend e database.
