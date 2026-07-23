@@ -905,104 +905,125 @@ router.get("/nearby", async (req, res) => {
 
   const lat = Number(req.query.lat);
   const lon = Number(req.query.lon);
-  const radius = Number(req.query.radius ?? req.query.radiusKm ?? 5);
-  const page = parsePage(req);
-  const pageSize = parsePageSize(req);
-  const offset = (page - 1) * pageSize;
+  const radiusKm = Number(req.query.radius ?? req.query.radiusKm ?? 5);
 
-  if (Number.isNaN(lat) || Number.isNaN(lon)) {
-    return res.status(400).json({ error: "Invalid coordinates" });
+  if (
+    !Number.isFinite(lat) ||
+    !Number.isFinite(lon) ||
+    lat < -90 ||
+    lat > 90 ||
+    lon < -180 ||
+    lon > 180
+  ) {
+    return res.status(400).json({
+      error: "Invalid coordinates",
+    });
+  }
+
+  if (!Number.isFinite(radiusKm) || radiusKm <= 0) {
+    return res.status(400).json({
+      error: "Invalid radius",
+    });
   }
 
   try {
     const user = await getDbUserFromClerk(req);
 
-    const totalRows = await prisma.$queryRawUnsafe<Array<{ count: bigint | number }>>(`
-      SELECT COUNT(*)::bigint AS count
-      FROM (
-        SELECT
-          id,
-          (
-            6371 * acos(
-              cos(radians(${lat})) *
-              cos(radians(latitude)) *
-              cos(radians(longitude) - radians(${lon})) +
-              sin(radians(${lat})) * sin(radians(latitude))
-            )
-          ) AS "distanceKm"
-        FROM "Car"
-        WHERE latitude IS NOT NULL
-          AND longitude IS NOT NULL
-          AND "marketStatus"::text = 'AVAILABLE'
-          AND "paymentStatus" <> 'SOLD'
-          AND "soldAt" IS NULL
-          AND "visuallyRemovedAt" IS NULL
-      ) t
-      WHERE t."distanceKm" <= ${radius}
-    `);
-
-    const totalRaw = totalRows?.[0]?.count ?? 0;
-    const total = typeof totalRaw === "bigint" ? Number(totalRaw) : Number(totalRaw);
-
-    const nearbyRows = await prisma.$queryRawUnsafe<Array<{ id: number; distanceKm: number }>>(`
+    const nearbyRows = await prisma.$queryRawUnsafe<
+      Array<{
+        id: number;
+        distanceKm: number;
+      }>
+    >(`
       SELECT *
       FROM (
         SELECT
           id,
           (
             6371 * acos(
-              cos(radians(${lat})) *
-              cos(radians(latitude)) *
-              cos(radians(longitude) - radians(${lon})) +
-              sin(radians(${lat})) * sin(radians(latitude))
+              LEAST(
+                1,
+                GREATEST(
+                  -1,
+                  cos(radians(${lat})) *
+                  cos(radians(latitude)) *
+                  cos(radians(longitude) - radians(${lon})) +
+                  sin(radians(${lat})) *
+                  sin(radians(latitude))
+                )
+              )
             )
           ) AS "distanceKm"
         FROM "Car"
         WHERE latitude IS NOT NULL
           AND longitude IS NOT NULL
           AND "marketStatus"::text = 'AVAILABLE'
-          AND "paymentStatus" <> 'SOLD'
+          AND ("paymentStatus" IS NULL OR "paymentStatus" <> 'SOLD')
           AND "soldAt" IS NULL
           AND "visuallyRemovedAt" IS NULL
-      ) t
-      WHERE t."distanceKm" <= ${radius}
-      ORDER BY t."distanceKm" ASC, t.id DESC
-      LIMIT ${pageSize}
-      OFFSET ${offset}
+      ) AS nearby
+      WHERE nearby."distanceKm" <= ${radiusKm}
+      ORDER BY nearby."distanceKm" ASC, nearby.id DESC
     `);
 
-    const ids = nearbyRows.map((r) => r.id);
+    const ids = nearbyRows.map((row) => Number(row.id));
 
-    if (!ids.length) {
-      return res.json(buildPaginatedResponse([], total, page, pageSize));
+    if (ids.length === 0) {
+      return res.json({
+        items: [],
+        total: 0,
+      });
     }
 
     const cars = await prisma.car.findMany({
       where: {
-        id: { in: ids },
+        id: {
+          in: ids,
+        },
         ...AVAILABLE_CAR_WHERE,
       },
       select: buildCarCardSelect(user?.id),
     });
 
-    const distanceMap = new Map<number, number>();
+    const carMap = new Map(
+      cars.map((car) => [car.id, car])
+    );
 
-    for (const row of nearbyRows) {
-      distanceMap.set(row.id, Number(row.distanceKm));
-    }
+    const distanceMap = new Map(
+      nearbyRows.map((row) => [
+        Number(row.id),
+        Number(row.distanceKm),
+      ])
+    );
 
     const orderedCars = ids
-      .map((id) => cars.find((c) => c.id === id))
-      .filter(Boolean)
-      .map((car: any) => ({
+      .map((id) => carMap.get(id))
+      .filter((car): car is NonNullable<typeof car> => Boolean(car))
+      .map((car) => ({
         ...car,
         distanceKm: distanceMap.get(car.id) ?? null,
       }));
 
-    return res.json(buildPaginatedResponse(mapCarCards(orderedCars, !!user), total, page, pageSize));
-  } catch (e) {
-    console.error("GET /api/cars/nearby error", e);
-    return res.status(500).json({ error: "Nearby search error" });
+    console.log("[NEARBY]", {
+      center: {
+        lat,
+        lon,
+      },
+      radiusKm,
+      total: orderedCars.length,
+      ids,
+    });
+
+    return res.json({
+      items: mapCarCards(orderedCars, Boolean(user)),
+      total: orderedCars.length,
+    });
+  } catch (error) {
+    console.error("GET /api/cars/nearby error:", error);
+
+    return res.status(500).json({
+      error: "Nearby search error",
+    });
   }
 });
 

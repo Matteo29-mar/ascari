@@ -948,3 +948,8 @@ update 08/07/2026
     slide1- Cinematic shot of a luxury sports car driving fast on a scenic mountain road, golden hour, smooth camera tracking, premium automotive commercial style, realistic, no text, 5 seconds, 16:9
     slide2- Professional mechanic inspecting a used car in a clean modern workshop, checking details with a tablet and flashlight, premium trustworthy atmosphere, cinematic lighting, realistic, no text, 5 seconds, 16:9
     slide3- Close-up cinematic shot of two people shaking hands and handing over car keys, modern dealership or elegant outdoor setting, trust and satisfaction mood, realistic, premium commercial style, no text, 5 seconds, 16:9
+
+
+update 23/07/2026
+1. sistemato un problema nella risoluzione della mappa, era impostato un limite di una manciata di auto dentro al raggio e non c'era verso 
+    di aumentare il numero di auto, risolto togliendo dei limiti aggiunti per errore nella rotta API GET /api/cars/nearby
