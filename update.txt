@@ -953,3 +953,31 @@ update 08/07/2026
 update 23/07/2026
 1. sistemato un problema nella risoluzione della mappa, era impostato un limite di una manciata di auto dentro al raggio e non c'era verso 
     di aumentare il numero di auto, risolto togliendo dei limiti aggiunti per errore nella rotta API GET /api/cars/nearby
+2. se ci sono delle modifiche da fare far ribuildare anche frontend se è una modifica solo del backend
+    docker compose down
+    docker compose up -d --build --force-recreate è andata in errore dal frontend però la prima parte di nuova build sul backend è
+    andata bene quindi può aver fatto, magari sarebbe meglio fare docker compose up -d --build --force-recreate backend
+3. stiamo pensando di configura invio email quando uno fa un'offerta un compratore al venditore
+     usiamo tool resend poi useremo aws SES in futuro
+        Compratore invia offerta
+            ↓
+    POST /api/offers
+            ↓
+    Offerta salvata nel database
+            ↓
+    Recupero email venditore dal database
+            ↓
+    Invio email tramite Resend
+            ↓
+    Venditore apre:
+    https://myascari.com/offers?offerId=123
+            ↓
+    Login Clerk, se necessario
+            ↓
+    Ascari evidenzia la specifica offerta
+
+    messo ne l.env del backend 
+    FRONTEND_URL=http://localhost:5173  -> questo penso diventi poi myascari.com
+    EMAIL_NOTIFICATIONS_ENABLED=true
+    RESEND_API_KEY=re_BZMvseTJ_Pnecg4Wyi27AzSajbY1NQaag
+    EMAIL_FROM=Ascari <onboarding@resend.dev> -> diventa notifiche@myascari.com

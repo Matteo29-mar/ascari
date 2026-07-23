@@ -1,7 +1,7 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { http } from "../api";
 import { useAuth } from "@clerk/clerk-react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import AscariPopup from "../components/AscariPopup";
 
 type Offer = {
@@ -114,11 +114,53 @@ export default function OffersReceived() {
   const { getToken } = useAuth();
   const nav = useNavigate();
 
+  const [searchParams] = useSearchParams();
+
+  const offerIdFromEmail = (() => {
+    const raw = searchParams.get("offerId");
+
+    if (!raw) return null;
+
+    const parsed = Number(raw);
+
+    if (!Number.isInteger(parsed) || parsed <= 0) {
+      return null;
+    }
+
+    return parsed;
+  })();
+
+  const offerElementsRef = useRef<
+    Record<number, HTMLDivElement | null>
+  >({});
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+  if (loading || !offerIdFromEmail) {
+    return;
+  }
+
+  const selectedElement =
+    offerElementsRef.current[offerIdFromEmail];
+
+  if (!selectedElement) {
+    return;
+  }
+
+  const timeout = window.setTimeout(() => {
+    selectedElement.scrollIntoView({
+      behavior: "smooth",
+      block: "center",
+    });
+  }, 150);
+
+  return () => {
+    window.clearTimeout(timeout);
+  };
+}, [loading, list, offerIdFromEmail]);
   function openPopup(next: PopupState) {
     setPopup(next);
   }
@@ -542,7 +584,26 @@ const res = await http.post(
 
         if (carRemoved) return null;
         return (
-          <div key={offer.id} className="card" style={{ marginBottom: 14 }}>
+          <div
+            key={offer.id}
+            id={`offer-${offer.id}`}
+            ref={(node) => {
+              offerElementsRef.current[offer.id] = node;
+            }}
+            className="card"
+            style={{
+              marginBottom: 14,
+              scrollMarginTop: 110,
+
+              ...(offer.id === offerIdFromEmail
+                ? {
+                    border: "2px solid #00ffaa",
+                    boxShadow:
+                      "0 0 0 4px rgba(0,255,170,0.14), 0 14px 40px rgba(0,0,0,0.32)",
+                  }
+                : {}),
+            }}
+          >
             <div className="card-body row" style={{ alignItems: "center", gap: 20 }}>
               <img
                 src={cover}

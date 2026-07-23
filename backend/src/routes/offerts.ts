@@ -8,6 +8,7 @@ import {
   isCarSold,
   runSoldCarsVisualCleanup,
 } from "../lib/carSaleLifecycle";
+import { sendOfferReceivedEmail } from "../lib/email/sendOfferReceivedEmail";
 
 const router = Router();
 
@@ -91,6 +92,59 @@ router.post("/", async (req, res) => {
         status: "PENDING",
       },
     });
+
+    /**
+     * L'offerta è già stata salvata.
+     *
+     * Se l'email fallisce:
+     * - l'offerta rimane valida;
+     * - il compratore riceve comunque risposta 201;
+     * - l'errore viene scritto nei log.
+     */
+    try {
+      const emailResult = await sendOfferReceivedEmail({
+        offerId: offer.id,
+
+        sellerEmail: car.owner.email,
+        sellerName: car.owner.name,
+
+        buyerEmail: buyer.email,
+        buyerName: buyer.name,
+
+        carId: car.id,
+        carTitle: car.title,
+        carMake: car.make,
+        carModel: car.model,
+        carCoverUrl: car.coverUrl,
+        carPhotos: car.photos,
+        isPeriziata: car.isPeriziata,
+
+        amount: offer.amount,
+      });
+
+      if (emailResult.skipped) {
+        console.info("[EMAIL][OFFER_RECEIVED] skipped", {
+          offerId: offer.id,
+          sellerId: car.ownerId,
+          reason: emailResult.reason,
+        });
+      } else {
+        console.info("[EMAIL][OFFER_RECEIVED] sent", {
+          offerId: offer.id,
+          sellerId: car.ownerId,
+          resendEmailId: emailResult.emailId,
+        });
+      }
+    } catch (emailError) {
+      console.error("[EMAIL][OFFER_RECEIVED] failed", {
+        offerId: offer.id,
+        sellerId: car.ownerId,
+        error:
+          emailError instanceof Error
+            ? emailError.message
+            : String(emailError),
+      });
+    }
 
     return res.status(201).json({ ok: true, offer });
   } catch (err) {
