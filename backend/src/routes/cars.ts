@@ -731,9 +731,13 @@ router.post("/", async (req, res) => {
     });
 
     return res.json({
-  ...toCarCard(car, true),
-  qrUrl: buildCarQrUrl(qrToken),
-  });
+      ...toCarCard(car, true),
+      qrUrl: buildCarQrUrl(qrToken),
+      arve: {
+        status: "PENDING",
+        analyzeUrl: `/api/arve/cars/${car.id}/analyze`,
+      },
+    });
   } catch (err: any) {
     console.error("POST /api/cars error:", err);
     return res.status(500).json({ error: err?.message || "Error creating car" });

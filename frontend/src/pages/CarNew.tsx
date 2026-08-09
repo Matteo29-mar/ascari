@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { http } from '../api';
+import { analyzeCarWithArve, http, saveArvePricingDecision } from '../api';
 import { useAuth } from '@clerk/clerk-react';
 import {
   getDraft,
@@ -19,6 +19,9 @@ import {
 import SelectableDropdown from '../components/SelectableDropdown';
 import AddressAutocomplete from '../components/AddressAutocomplete';
 import { downloadCarQrCode } from "../utils/qrCode";
+import ArvePricingLoading from '../components/Arve/ArvePricingLoading';
+import ArvePricingModal from '../components/Arve/ArvePricingModal';
+import type { ArvePricingAnalysis } from '../types/arve';
 
 function uid() {
   return Math.random().toString(36).slice(2) + Date.now().toString(36);
@@ -211,7 +214,11 @@ export default function CarNew() {
   const [highlightMissing, setHighlightMissing] = useState(false);
   const [missingFields, setMissingFields] = useState<RequiredFieldKey[]>([]);
 
-  
+  const [createdCarId, setCreatedCarId] = useState<number | null>(null);
+  const [arveAnalysis, setArveAnalysis] = useState<ArvePricingAnalysis | null>(null);
+  const [arveLoading, setArveLoading] = useState(false);
+  const [arveDecisionBusy, setArveDecisionBusy] = useState(false);
+  const [arveDecisionError, setArveDecisionError] = useState<string | null>(null);
 
   const inputRef = useRef<HTMLInputElement | null>(null);
 
@@ -413,6 +420,7 @@ export default function CarNew() {
   async function onSave() {
     setErr(null);
     setOk(null);
+    setArveDecisionError(null);
 
     const missing = getMissingRequiredFields();
     setMissingFields(missing);
@@ -447,9 +455,13 @@ export default function CarNew() {
         return;
       }
 
+      setArveLoading(true);
+
       const { data } = await http.post('/cars', payload, {
         headers: { Authorization: `Bearer ${token}` },
       });
+
+      setCreatedCarId(data.id);
 
       if (draftId) removeDraft(draftId);
 
@@ -463,13 +475,30 @@ export default function CarNew() {
           });
         }
       } catch (qrError) {
-        console.error("Errore download QR:", qrError);
+        console.error('Errore download QR:', qrError);
       }
 
-      setOk('Salvato (#' + data.id + ')');
-      setTimeout(() => nav(`/cars/${data.id}`), 400);
+      setOk(`Auto salvata (#${data.id}). ARVE sta calcolando i prezzi…`);
+
+      try {
+        const analysis = await analyzeCarWithArve(data.id, token);
+        setArveAnalysis(analysis);
+        setOk('Analisi ARVE completata. Scegli quali prezzi applicare.');
+      } catch (arveError: any) {
+        console.error('Errore analisi ARVE:', arveError);
+        const message =
+          arveError?.response?.data?.error ||
+          arveError?.message ||
+          'ARVE non è disponibile in questo momento.';
+
+        setErr(`Auto salvata, ma ARVE non ha completato l'analisi: ${message}`);
+        setTimeout(() => nav(`/cars/${data.id}`), 1800);
+      } finally {
+        setArveLoading(false);
+      }
     } catch (e: any) {
       console.error(e);
+      setArveLoading(false);
 
       const draft = {
         id: draftId || uid(),
@@ -488,10 +517,56 @@ export default function CarNew() {
     }
   }
 
+  async function saveArveDecision(acceptSuggestedPrice: boolean) {
+    if (!createdCarId || !arveAnalysis) return;
+
+    setArveDecisionBusy(true);
+    setArveDecisionError(null);
+
+    try {
+      const token = await getToken();
+      if (!token) {
+        setArveDecisionError('Sessione non valida. Accedi nuovamente.');
+        return;
+      }
+
+      await saveArvePricingDecision(createdCarId, acceptSuggestedPrice, token);
+
+      if (acceptSuggestedPrice) {
+        setOfferPrice1(arveAnalysis.quickSalePrice);
+        setOfferPrice2(arveAnalysis.reservePrice);
+        setOfferPrice3(arveAnalysis.democraticPrice);
+      }
+
+      nav(`/cars/${createdCarId}`);
+    } catch (decisionError: any) {
+      console.error('Errore decisione ARVE:', decisionError);
+      setArveDecisionError(
+        decisionError?.response?.data?.error ||
+          decisionError?.message ||
+          'Non è stato possibile salvare la scelta.'
+      );
+    } finally {
+      setArveDecisionBusy(false);
+    }
+  }
+
   const missingLabels = missingFields.map((field) => REQUIRED_FIELD_LABELS[field]);
 
   return (
     <div>
+      {arveLoading && <ArvePricingLoading />}
+
+      {arveAnalysis && (
+        <ArvePricingModal
+          analysis={arveAnalysis}
+          busy={arveDecisionBusy}
+          error={arveDecisionError}
+          onAccept={() => saveArveDecision(true)}
+          onKeepOriginal={() => saveArveDecision(false)}
+        />
+      )}
+
       {showPopup && (
         <AscariPopup
           title="Campi obbligatori mancanti"
@@ -794,8 +869,8 @@ export default function CarNew() {
       />
 
       <div className="row" style={{ marginTop: 14, justifyContent: 'flex-end' }}>
-        <button className="btn" onClick={onSave}>
-          Salva
+        <button className="btn" onClick={onSave} disabled={arveLoading || arveDecisionBusy}>
+          {arveLoading ? 'ARVE sta analizzando…' : 'Salva'}
         </button>
       </div>
     </div>

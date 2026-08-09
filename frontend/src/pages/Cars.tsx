@@ -9,12 +9,18 @@ import { useAuth, useClerk } from "@clerk/clerk-react";
 import LikeButton from "../components/LikeButton";
 import SearchBar from "../components/Search/SearchBar";
 import HomeHeroCarousel from "../components/HomeHeroCarousel";
+import ShareButton from "../components/ShareButton/ShareButton";
 
 type Car = {
   id: number;
   make: string;
   model: string;
+  title?: string | null;
   year: number;
+  priceEur?: number | null;
+  offerPrice1?: number | null;
+  offerPrice2?: number | null;
+  offerPrice3?: number | null;
   latitude?: number | null;
   longitude?: number | null;
   distanceKm?: number | null;
@@ -154,6 +160,7 @@ export default function Cars() {
   const didDraftSyncRef = useRef(false);
   const nav = useNavigate();
   const [drafts, setDrafts] = useState<DraftCar[]>([]);
+  const [mobileAdvancedOpen, setMobileAdvancedOpen] = useState(false);
 
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState<6 | 9 | 12>(6);
@@ -482,12 +489,14 @@ async function loadAll(nextPage = page, nextPageSize = pageSize) {
   }, [isLoaded, isSignedIn]);
 
   async function onSearchClick() {
+    setMobileAdvancedOpen(false);
     setPos(null);
     setPage(1);
     await runSearch(1, pageSize, q);
   }
 
   async function onAdvancedSearch(filters: SearchFilters) {
+    setMobileAdvancedOpen(false);
     setPos(null);
     setQ("");
     setPage(1);
@@ -495,6 +504,7 @@ async function loadAll(nextPage = page, nextPageSize = pageSize) {
   }
 
   async function nearby() {
+    setMobileAdvancedOpen(false);
     setErr(null);
 
     if (!navigator.geolocation) {
@@ -524,6 +534,7 @@ async function loadAll(nextPage = page, nextPageSize = pageSize) {
   }
 
   async function resetAll() {
+    setMobileAdvancedOpen(false);
     setQ("");
     setPos(null);
     setActiveFilters({
@@ -544,6 +555,7 @@ async function loadAll(nextPage = page, nextPageSize = pageSize) {
   }
 
   async function changePageSize(nextSize: 6 | 9 | 12) {
+    setMobileAdvancedOpen(false);
     setPageSize(nextSize);
     setPage(1);
     await reloadCurrentView(1, nextSize);
@@ -600,78 +612,112 @@ async function loadAll(nextPage = page, nextPageSize = pageSize) {
 
   return (
     <div>
-    <HomeHeroCarousel />
+      <HomeHeroCarousel />
       <h1 className="h1">Auto disponibili</h1>
-      <p className="muted">Cerca un modello oppure mostra i veicoli nelle vicinanze.</p>
 
-      <SearchBar
-        onSearch={(filters) => {
-          onAdvancedSearch(filters);
-        }}
-      />
+      <div className="cars-controls-stack">
+        <div
+          id="cars-search-intro"
+          className={`cars-intro-search${mobileAdvancedOpen ? " is-mobile-open" : ""}`}
+        >
+          <p className="muted cars-search-description">
+            Cerca un modello oppure mostra i veicoli nelle vicinanze.
+          </p>
 
-      <div className="toolbar" style={{ gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-        <input
-          className="input"
-          placeholder="Cerca per marca o modello (es. Ascari GT)"
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          style={{ minWidth: 280 }}
-        />
-
-        <button className="btn" onClick={onSearchClick} disabled={loading}>
-          Cerca
-        </button>
-
-        <button className="btn ghost" onClick={resetAll}>
-          Reset
-        </button>
-
-        <span style={{ width: 8 }} />
-
-        <label className="muted" htmlFor="radius">
-          Raggio
-        </label>
-
-        <input
-          id="radius"
-          className="input"
-          type="number"
-          min={1}
-          max={100}
-          value={radius}
-          onChange={(e) => setRadius(parseInt(e.target.value || "5", 10))}
-          style={{ width: 90 }}
-        />
-
-        <span className="tag">km</span>
-
-        <button className="btn secondary" onClick={nearby} disabled={loading}>
-          Vicino a me
-        </button>
-
-        <div className="cars-toolbar-spacer" />
-
-        <div className="cars-page-size-wrap">
-          <label className="cars-page-size-label" htmlFor="pageSize">
-            Visualizzazione
-          </label>
-
-          <select
-            id="pageSize"
-            className="input cars-page-size-select"
-            value={pageSize}
-            onChange={(e) => changePageSize(Number(e.target.value) as 6 | 9 | 12)}
-          >
-            <option value={6}>6 / pagina</option>
-            <option value={9}>9 / pagina</option>
-            <option value={12}>12 / pagina</option>
-          </select>
+          <SearchBar
+            onSearch={(filters) => {
+              onAdvancedSearch(filters);
+            }}
+          />
         </div>
 
-        <button className="btn" onClick={goToNew}>
-          + Nuovo
-        </button>
+        <div className="cars-new-car-cta">
+          <button className="btn cars-new-car-button" onClick={goToNew}>
+            Carica la tua auto
+          </button>
+        </div>
+
+        <div className="cars-mobile-advanced-toggle-wrap">
+          <button
+            type="button"
+            className="btn ghost cars-mobile-advanced-toggle"
+            aria-expanded={mobileAdvancedOpen}
+            aria-controls="cars-search-intro cars-search-toolbar"
+            onClick={() => setMobileAdvancedOpen((open) => !open)}
+          >
+            <span>Avanzate</span>
+            <span
+              className={`cars-mobile-advanced-arrow${mobileAdvancedOpen ? " is-open" : ""}`}
+              aria-hidden="true"
+            >
+              ▾
+            </span>
+          </button>
+        </div>
+
+        <div
+          id="cars-search-toolbar"
+          className={`toolbar cars-search-toolbar${mobileAdvancedOpen ? " is-mobile-open" : ""}`}
+          style={{ gap: 10, flexWrap: "wrap", alignItems: "center" }}
+        >
+          <input
+            className="input cars-text-search-input"
+            placeholder="Cerca per marca o modello (es. Ascari GT)"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+          />
+
+          <button className="btn" onClick={onSearchClick} disabled={loading}>
+            Cerca
+          </button>
+
+          <button className="btn ghost" onClick={resetAll}>
+            Reset
+          </button>
+
+          <span className="cars-toolbar-divider" />
+
+          <div className="cars-radius-group">
+            <label className="muted" htmlFor="radius">
+              Raggio
+            </label>
+
+            <input
+              id="radius"
+              className="input cars-radius-input"
+              type="number"
+              min={1}
+              max={100}
+              value={radius}
+              onChange={(e) => setRadius(parseInt(e.target.value || "5", 10))}
+            />
+
+            <span className="tag">km</span>
+          </div>
+
+          <button className="btn secondary" onClick={nearby} disabled={loading}>
+            Vicino a me
+          </button>
+
+          <div className="cars-toolbar-spacer" />
+
+          <div className="cars-page-size-wrap">
+            <label className="cars-page-size-label" htmlFor="pageSize">
+              Visualizzazione
+            </label>
+
+            <select
+              id="pageSize"
+              className="input cars-page-size-select"
+              value={pageSize}
+              onChange={(e) => changePageSize(Number(e.target.value) as 6 | 9 | 12)}
+            >
+              <option value={6}>6 / pagina</option>
+              <option value={9}>9 / pagina</option>
+              <option value={12}>12 / pagina</option>
+            </select>
+          </div>
+        </div>
       </div>
 
       {pos && viewMode === "nearby" && (
@@ -781,19 +827,36 @@ async function loadAll(nextPage = page, nextPageSize = pageSize) {
                     Dettaglio modello
                   </Link>
 
-                  {isSignedIn && (
-                    <LikeButton
-                      carId={car.id}
-                      initialLiked={car.likedByMe ?? false}
-                      onChange={(newLiked) => {
-                        setList((prev) =>
-                          prev.map((c) =>
-                            c.id === car.id ? { ...c, likedByMe: newLiked } : c
-                          )
-                        );
-                      }}
-                    />
-                  )}
+                  <div className="card-interaction-actions">
+                    {!isMine && (
+                      <ShareButton
+                        carId={car.id}
+                        title={car.title?.trim() || `${car.make} ${car.model}`}
+                        year={car.year}
+                        imageUrl={imagesForCard(car)[0]}
+                        priceEur={
+                          car.priceEur ??
+                          car.offerPrice1 ??
+                          car.offerPrice2 ??
+                          car.offerPrice3
+                        }
+                      />
+                    )}
+
+                    {isSignedIn && (
+                      <LikeButton
+                        carId={car.id}
+                        initialLiked={car.likedByMe ?? false}
+                        onChange={(newLiked) => {
+                          setList((prev) =>
+                            prev.map((c) =>
+                              c.id === car.id ? { ...c, likedByMe: newLiked } : c
+                            )
+                          );
+                        }}
+                      />
+                    )}
+                  </div>
 
                   {isMine && (
                     <Link className="btn secondary" to={`/cars/edit/${car.id}`}>

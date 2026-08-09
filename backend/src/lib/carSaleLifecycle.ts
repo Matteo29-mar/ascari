@@ -80,7 +80,30 @@ export async function markCarAsSoldPendingRemoval(params: {
   const soldAt = params.soldAt ?? new Date();
   const removalScheduledAt = getSoldCarRemovalDate(soldAt);
 
-  return params.prisma.car.update({
+  const [carBeforeSale, payment, saleHistory] = await Promise.all([
+    params.prisma.car.findUnique({
+      where: { id: params.carId },
+      select: {
+        id: true,
+        createdAt: true,
+        salePriceEur: true,
+      },
+    }),
+    params.paymentId
+      ? params.prisma.payment.findUnique({
+          where: { id: params.paymentId },
+          select: { amountEur: true },
+        })
+      : Promise.resolve(null),
+    params.saleHistoryId
+      ? params.prisma.saleHistory.findUnique({
+          where: { id: params.saleHistoryId },
+          select: { amountEur: true },
+        })
+      : Promise.resolve(null),
+  ]);
+
+  const updatedCar = await params.prisma.car.update({
     where: {
       id: params.carId,
     },
@@ -97,6 +120,37 @@ export async function markCarAsSoldPendingRemoval(params: {
       soldBySaleHistoryId: params.saleHistoryId ?? null,
     },
   });
+
+  const actualSoldPriceEur =
+    saleHistory?.amountEur ?? payment?.amountEur ?? carBeforeSale?.salePriceEur ?? null;
+
+  if (actualSoldPriceEur && actualSoldPriceEur > 0) {
+    const daysToSell = carBeforeSale?.createdAt
+      ? Math.max(
+          0,
+          Math.round(
+            (soldAt.getTime() - carBeforeSale.createdAt.getTime()) / 86_400_000
+          )
+        )
+      : null;
+
+    await params.prisma.arvePricingAnalysis.updateMany({
+      where: { carId: params.carId },
+      data: {
+        actualSoldPriceEur,
+        actualSoldAt: soldAt,
+        daysToSell,
+      },
+    });
+
+    console.log(
+      `[ARVE_SALE] carId=${params.carId} soldPrice=${actualSoldPriceEur} daysToSell=${
+        daysToSell ?? "n/a"
+      }`
+    );
+  }
+
+  return updatedCar;
 }
 
 export async function markCarAsRemovedAfterSale(params: {

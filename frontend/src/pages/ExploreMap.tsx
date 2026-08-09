@@ -7,6 +7,7 @@ import "@mapbox/mapbox-gl-geocoder/dist/mapbox-gl-geocoder.css";
 import debounce from "lodash.debounce";
 import { useNavigate } from "react-router-dom";
 import { http } from "../api";
+import { useTheme } from "../context/ThemeContext";
 
 import {
   CAR_BRANDS,
@@ -31,6 +32,24 @@ type CarPin = {
 
 const MILAN = { lat: 45.4642, lng: 9.19 };
 const MOBILE_BREAKPOINT = 640;
+
+type MapStyleKey = "auto" | "light" | "dark" | "satellite" | "terrain";
+
+const MAP_STYLE_STORAGE_KEY = "ascari-map-style";
+
+const MAP_STYLES: Record<Exclude<MapStyleKey, "auto">, string> = {
+  light: "mapbox://styles/mapbox/light-v11",
+  dark: "mapbox://styles/mapbox/dark-v11",
+  satellite: "mapbox://styles/mapbox/satellite-streets-v12",
+  terrain: "mapbox://styles/mapbox/outdoors-v12",
+};
+
+const isMapStyleKey = (value: string | null): value is MapStyleKey =>
+  value === "auto" ||
+  value === "light" ||
+  value === "dark" ||
+  value === "satellite" ||
+  value === "terrain";
 
 const toValidNumber = (value: unknown): number | null => {
   const n = Number(value);
@@ -60,7 +79,15 @@ const getValidLatLng = (
 
 export default function ExploreMap() {
   const navigate = useNavigate();
+  const { theme } = useTheme();
   const mapboxToken = import.meta.env.VITE_MAPBOX_TOKEN as string;
+
+  const [mapStyleKey, setMapStyleKey] = useState<MapStyleKey>(() => {
+    if (typeof window === "undefined") return "auto";
+
+    const savedStyle = window.localStorage.getItem(MAP_STYLE_STORAGE_KEY);
+    return isMapStyleKey(savedStyle) ? savedStyle : "auto";
+  });
 
   const [center, setCenter] = useState<{ lat: number; lng: number }>(MILAN);
   const [askedGeo, setAskedGeo] = useState(false);
@@ -90,7 +117,14 @@ export default function ExploreMap() {
   const geocoderContainerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<any>(null);
 
+  const resolvedMapStyleKey = mapStyleKey === "auto" ? theme : mapStyleKey;
+  const mapStyle = MAP_STYLES[resolvedMapStyleKey];
+
   const norm = (v: unknown) => String(v ?? "").trim().toLowerCase();
+
+  useEffect(() => {
+    window.localStorage.setItem(MAP_STYLE_STORAGE_KEY, mapStyleKey);
+  }, [mapStyleKey]);
 
   useEffect(() => {
     setModel("");
@@ -415,6 +449,20 @@ export default function ExploreMap() {
                 className="explore-control explore-control-small"
               />
 
+              <select
+                value={mapStyleKey}
+                onChange={(e) => setMapStyleKey(e.target.value as MapStyleKey)}
+                className="explore-control explore-map-style-control"
+                aria-label="Stile della mappa"
+                title="Cambia stile della mappa"
+              >
+                <option value="auto">Mappa: automatica</option>
+                <option value="light">Mappa chiara</option>
+                <option value="dark">Mappa scura</option>
+                <option value="satellite">Mappa satellitare</option>
+                <option value="terrain">Mappa rilievo</option>
+              </select>
+
               <div className="explore-radius-group">
                 <span className="explore-radius-label">Raggio</span>
                 <input
@@ -447,7 +495,7 @@ export default function ExploreMap() {
           longitude: center.lng,
           zoom: 11,
         }}
-        mapStyle="mapbox://styles/mapbox/dark-v11"
+        mapStyle={mapStyle}
         style={{ width: "100%", height: "100%" }}
       >
         {filteredCars.map((c) => (

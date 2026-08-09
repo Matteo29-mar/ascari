@@ -18,6 +18,7 @@ import stripeRoutes from "./routes/stripe";
 import historyRouter from "./routes/history";
 import soldCarsRoutes from "./routes/soldCars";
 import qrRoutes from "./routes/qr";
+import arvePricingRoutes from "./routes/arvePricing";
 
 import { startSoldCarsCleanupJob } from "./jobs/soldCarsCleanup";
 
@@ -53,7 +54,8 @@ app.use((req, res, next) => {
     req.path.startsWith("/api/chat") ||
     req.path.startsWith("/api/offers") ||
     req.path.startsWith("/api/sold-cars") ||
-    req.path.startsWith("/api/history")
+    req.path.startsWith("/api/history") ||
+    req.path.startsWith("/api/arve")
   ) {
     res.set("Cache-Control", "no-store");
   }
@@ -85,6 +87,7 @@ app.use("/api/inspections", inspectionsRoutes);
 app.use("/api/inspection-reports", inspectionReportsRouter);
 app.use("/api/stripe", stripeRoutes);
 app.use("/api/history", historyRouter);
+app.use("/api/arve", arvePricingRoutes);
 
 // Route dedicata al ciclo auto vendute
 app.use("/api/sold-cars", soldCarsRoutes);

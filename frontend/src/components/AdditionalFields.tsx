@@ -1,5 +1,6 @@
 // src/components/AdditionalFields.tsx
 import React, { useState } from 'react';
+import CarColorPicker from './CarColorPicker/CarColorPicker';
 
 type AdditionalFieldsProps = {
   data: {
@@ -38,7 +39,7 @@ export default function AdditionalFields({
 
   return (
     <section
-      className={`card ${transmissionError ? 'ascari-section-error' : ''}`}
+      className={`card ascari-additional-fields ${transmissionError ? 'ascari-section-error' : ''}`}
       style={{ marginTop: 16 }}
     >
       <div
@@ -73,11 +74,9 @@ export default function AdditionalFields({
               onChange={(e) => setData({ ...data, trimLevel: e.target.value })}
             />
 
-            <input
-              className="input"
-              placeholder="Colore"
+            <CarColorPicker
               value={data.color || ''}
-              onChange={(e) => setData({ ...data, color: e.target.value })}
+              onChange={(color) => setData({ ...data, color })}
             />
 
             <input

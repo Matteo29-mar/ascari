@@ -1,0 +1,233 @@
+.ascari-additional-fields {
+  overflow: visible;
+}
+
+.ascari-color-picker {
+  position: relative;
+  min-width: 0;
+}
+
+.ascari-color-picker-trigger {
+  width: 100%;
+  max-width: 100%;
+  height: 42px;
+  padding: 0 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--panel-strong);
+  border-radius: 12px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.ascari-color-picker-trigger:hover {
+  background: var(--panel-hover);
+}
+
+.ascari-color-picker-trigger:focus,
+.ascari-color-picker-trigger.is-open {
+  border-color: rgba(110, 231, 255, 0.55);
+  box-shadow: 0 0 0 4px rgba(110, 231, 255, 0.1);
+  outline: none;
+}
+
+.ascari-color-picker-trigger-value,
+.ascari-car-color-value {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.ascari-color-picker-trigger-value > span:last-child,
+.ascari-car-color-value > span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ascari-color-picker-placeholder {
+  color: var(--placeholder);
+}
+
+.ascari-color-picker-chevron {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.ascari-color-swatch,
+.ascari-color-family-swatch,
+.ascari-color-shade-swatch,
+.ascari-car-color-detail-swatch {
+  flex: 0 0 auto;
+  border: 1px solid rgba(100, 116, 139, 0.55);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.16);
+}
+
+.ascari-color-swatch {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+}
+
+.ascari-color-picker-panel {
+  position: absolute;
+  z-index: 80;
+  top: calc(100% + 8px);
+  right: 0;
+  width: min(680px, calc(100vw - 48px));
+  padding: 16px;
+  color: var(--text);
+  background: var(--bg-card);
+  border: 1px solid var(--panel-strong);
+  border-radius: 16px;
+  box-shadow: var(--shadow);
+}
+
+.ascari-color-picker-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.ascari-color-picker-head p,
+.ascari-color-picker-help {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.ascari-color-picker-clear {
+  padding: 6px 10px;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid var(--panel-strong);
+  border-radius: 9px;
+  cursor: pointer;
+}
+
+.ascari-color-picker-clear:hover {
+  color: var(--text);
+  background: var(--panel-hover);
+}
+
+.ascari-color-family-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.ascari-color-family,
+.ascari-color-shade {
+  min-width: 0;
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--panel-strong);
+  border-radius: 12px;
+  cursor: pointer;
+}
+
+.ascari-color-family:hover,
+.ascari-color-shade:hover {
+  background: var(--panel-hover);
+}
+
+.ascari-color-family.is-selected,
+.ascari-color-shade.is-selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 20%, transparent);
+}
+
+.ascari-color-family {
+  min-height: 70px;
+  padding: 9px 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  font-size: 12px;
+  text-align: center;
+}
+
+.ascari-color-family-swatch {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+}
+
+.ascari-color-shades-section {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--panel-strong);
+}
+
+.ascari-color-shade-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.ascari-color-shade {
+  min-height: 48px;
+  padding: 8px 10px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  text-align: left;
+}
+
+.ascari-color-shade-swatch {
+  width: 28px;
+  height: 28px;
+  border-radius: 9px;
+}
+
+.ascari-car-color-value {
+  color: var(--text);
+}
+
+.ascari-car-color-detail-swatch {
+  width: 24px;
+  height: 24px;
+  border-radius: 8px;
+}
+
+@media (max-width: 720px) {
+  .ascari-color-picker-panel {
+    left: 0;
+    right: auto;
+    width: min(560px, calc(100vw - 56px));
+  }
+
+  .ascari-color-family-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .ascari-color-shade-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 480px) {
+  .ascari-color-picker-panel {
+    width: calc(100vw - 44px);
+    padding: 13px;
+  }
+
+  .ascari-color-family-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .ascari-color-shade-grid {
+    grid-template-columns: 1fr;
+  }
+}

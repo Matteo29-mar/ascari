@@ -218,6 +218,8 @@ model Car {
   qrCodeCreatedAt DateTime?
   qrScans         QrScan[]
 
+  arvePricingAnalysis ArvePricingAnalysis?
+
   @@index([make, model])
   @@index([latitude, longitude])
   @@index([ownerId])
@@ -225,6 +227,59 @@ model Car {
   @@index([marketStatus])
   @@index([removalScheduledAt])
   @@index([visuallyRemovedAt])
+}
+
+model ArvePricingAnalysis {
+  id    Int @id @default(autoincrement())
+  carId Int @unique
+  car   Car @relation(fields: [carId], references: [id], onDelete: Cascade)
+
+  originalOfferPrice1 Int
+  originalOfferPrice2 Int
+  originalOfferPrice3 Int
+
+  quickSalePrice  Int
+  reservePrice    Int
+  democraticPrice Int
+
+  marketMin    Int
+  marketMax    Int
+  marketMedian Int
+
+  recommendation String
+  message        String
+  confidence     Float
+  evidenceLevel  Int
+
+  comparableItems     Json?
+  privateMatchesCount Int @default(0)
+
+  sourceType    String
+  modelUsed     String?
+  promptVersion String?
+  inputTokens   Int?
+  outputTokens  Int?
+  totalTokens   Int?
+  rawResponseJson Json?
+  analysisError   String?
+
+  userDecision      String @default("PENDING")
+  appliedOfferPrice1 Int?
+  appliedOfferPrice2 Int?
+  appliedOfferPrice3 Int?
+  decidedAt          DateTime?
+
+  actualSoldPriceEur Int?
+  actualSoldAt       DateTime?
+  daysToSell         Int?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([sourceType])
+  @@index([userDecision])
+  @@index([actualSoldAt])
+  @@index([createdAt])
 }
 
 model QrScan {

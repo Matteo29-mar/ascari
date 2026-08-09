@@ -974,3 +974,59 @@ update 23/07/2026
     EMAIL_NOTIFICATIONS_ENABLED=true
     RESEND_API_KEY=re_BZMvseTJ_Pnecg4Wyi27AzSajbY1NQaag
     EMAIL_FROM=Ascari <onboarding@resend.dev> -> diventa notifiche@myascari.com
+
+    creato nuovo sistema email completato e pushato
+    ricordarsi che quando si builda il frontend spostare e fare switch
+    VITE_API_URL=https://api.myascari.com/api
+    #VITE_API_URL=http://localhost:4002/api
+
+    nuova stringa db fatta non cancellare .env contenuto di backend
+
+sal 24/07/2026
+1. tasto qr code in basso più grande 
+2. perizia più grande simile a spec tecniche
+3. aggiustare colore mod light 
+4. aggiungere una quarta slide sul qr code e sull' importanza dell'offline
+5. investigare su inidirizzo e città
+6. tasto nuovo con carica auto più grande e in altra posizione 
+
+
+update 29/07/2026
+1. creato la prima versione di ARVE, creato a partire da i documenti fatti per tooldech della demo, ho creato un documento
+    per visionare tutto. Possiamo dire che è AI (token chat gpt) + ascari web app +  popolazione dataset privato
+    funziona che quando si crea una auto, salva, creazione auto e poi valutazione o con dataset se presenti dati o con chat gpt
+    con token e suggerimento puoi scegliere o meno di accettare
+2. ho notato che se non sei loggato non vedi i prezzi, vorrei che apparisse il tasto offerta con i 3 prezzi ma una volta che clicchi
+    ti fa fare la login o la registrazione, una volta che ti sei loggato ti riporta al dettaglio auto per continuare la richiesta
+    di offerta
+
+sal 31/07/2026
+1. confronto prezzo ARVE
+    lista auto ( preparata a mano da Mattia) + dataset privato ascari + AI (token openAI) che ragiona, interpreta e fornisce prezzo utileù
+2. sviluppare tasto condivisi 
+3. colore mappa da cambiare da nero a bianco
+
+03/08/2026
+1. aggiustato il mod light 
+2. aggiustato mod light per la mappa ed impostato una serie di modidche lato mappa, scelta di diversi tipi di mappa
+3. creato il tasto condividi con vari social
+4. impostato il cambio del bottone da +nuovo a carica la tua nuova auto
+5. modificata la visuale da mobile ora quando si entra vedi subito il carica auto e le card, un tasto avanzate ha tutto dentro
+    vicino a me, filtri e altro
+6. inserito il nuovo video con scritta nello slideshow ora ci sono 4 slide
+
+04/08/2026
+1. inserito palette colore al posto di scriverlo 
+
+09/08/2026
+1. creazione della sezione concessionario
+    Il profilo concessionario entra come altro utente, come è stato fatto per il periziatore he quel profilo che si registra 
+    diventa solo concessionario. Cliccato tasto concessionario, compila i dati come il periziatore con attività e altri dati,
+    poi una volta creato il profilo la vista che vede è identica al profilo normale, quindi vede le auto, fa offerte, 
+    riceve offerte, filtra, la mappa e altro. Solo ha una cosa diversa il suo garage le auto che posta sono visibili 
+    alle persone normali. Quindi se un utente normale cerca un'auto va sul dettaglio auto può vedere il link con il nome 
+    della concessionaria e portarlo al garage delle auto della concessionario, nella vista dell'utente normale; 
+    oltre le auto può vedere le informazioni della concessionaria: indirizzo copiabile da inserire su maps, numero di auto 
+    in vendita, contatti, logo e nome della concessionaria e tutte le sue autovetture ( vedere foto due con link). 
+    In più vorrei fare una modifica alla mappa, adesso i puntini sono verdi, ma vorrei una legenda che mostra la 
+    differenza tra puntini verdi =auto private e puntini rossi = auto di concessionarie.

@@ -8,6 +8,7 @@ import { useOffers } from "../context/OfferContext";
 import SoldCarPopup from "../components/SoldCarPopup";
 import { getCarQrCode } from "../api";
 import { downloadCarQrCode } from "../utils/qrCode";
+import CarColorValue from "../components/CarColorPicker/CarColorValue";
 
 type CarMarketStatus = "AVAILABLE" | "SOLD_PENDING_REMOVAL" | "REMOVED_AFTER_SALE";
 
@@ -568,7 +569,7 @@ export default function CarDetail() {
                 <Spec label="Alimentazione" value={currentCar.fuelType} />
                 <Spec label="Posti" value={currentCar.seats} />
                 <Spec label="Porte" value={currentCar.doors} />
-                <Spec label="Colore" value={currentCar.color} />
+                <Spec label="Colore" value={<CarColorValue color={currentCar.color} />} />
               </div>
             </div>
           </section>

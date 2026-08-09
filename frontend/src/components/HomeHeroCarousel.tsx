@@ -12,6 +12,11 @@ const slides = [
     subtitle: "Perizie professionali. Più trasparenza. Meno sorprese.",
   },
   {
+    video: "/video/hero-qrcode.mp4",
+    title: "La tua auto non aspetta il compratore. Lo trova.",
+    subtitle: "Ogni scansione è una nuova opportunità di vendita.",
+  },
+  {
     video: "/video/hero-handover.mp4",
     title: "Compra con tranquillità.",
     subtitle: "Ascari ti accompagna fino alla conclusione della vendita.",

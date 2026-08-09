@@ -1,5 +1,6 @@
 // frontend/src/api.ts
 import axios from "axios";
+import type { ArveDecisionResponse, ArvePricingAnalysis } from "./types/arve";
 
 // URL base del backend
 export const API_BASE_URL =
@@ -27,6 +28,52 @@ export async function createCar(data: any, token: string) {
   const res = await http.post("/cars", data, {
     headers: { Authorization: `Bearer ${token}` },
   });
+  return res.data;
+}
+
+// Analizza la nuova auto con ARVE
+export async function analyzeCarWithArve(
+  carId: number,
+  token: string
+): Promise<ArvePricingAnalysis> {
+  const res = await http.post(
+    `/arve/cars/${carId}/analyze`,
+    {},
+    {
+      headers: { Authorization: `Bearer ${token}` },
+      timeout: 35_000,
+    }
+  );
+
+  return res.data;
+}
+
+// Accetta i prezzi ARVE oppure conserva quelli originali
+export async function saveArvePricingDecision(
+  carId: number,
+  acceptSuggestedPrice: boolean,
+  token: string
+): Promise<ArveDecisionResponse> {
+  const res = await http.post(
+    `/arve/cars/${carId}/decision`,
+    { acceptSuggestedPrice },
+    {
+      headers: { Authorization: `Bearer ${token}` },
+    }
+  );
+
+  return res.data;
+}
+
+// Recupera l'ultima analisi ARVE della propria auto
+export async function getCarArveAnalysis(
+  carId: number,
+  token: string
+): Promise<ArvePricingAnalysis> {
+  const res = await http.get(`/arve/cars/${carId}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
   return res.data;
 }
 
