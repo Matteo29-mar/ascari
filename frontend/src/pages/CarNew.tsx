@@ -210,6 +210,7 @@ export default function CarNew() {
 
   const [err, setErr] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
+  const [dealerPlanLimitReached, setDealerPlanLimitReached] = useState(false);
   const [showPopup, setShowPopup] = useState(false);
   const [highlightMissing, setHighlightMissing] = useState(false);
   const [missingFields, setMissingFields] = useState<RequiredFieldKey[]>([]);
@@ -421,6 +422,7 @@ export default function CarNew() {
     setErr(null);
     setOk(null);
     setArveDecisionError(null);
+    setDealerPlanLimitReached(false);
 
     const missing = getMissingRequiredFields();
     setMissingFields(missing);
@@ -499,6 +501,13 @@ export default function CarNew() {
     } catch (e: any) {
       console.error(e);
       setArveLoading(false);
+
+      if (e?.response?.data?.code === 'DEALER_SUBSCRIPTION_REQUIRED') {
+        setDealerPlanLimitReached(true);
+        setOk(null);
+        setErr('Per pubblicare auto come concessionaria devi attivare il piano STARTER o ADVANCED.');
+        return;
+      }
 
       const draft = {
         id: draftId || uid(),
@@ -600,6 +609,11 @@ export default function CarNew() {
       )}
 
       {err && <p style={{ color: 'var(--danger)' }}>{err}</p>}
+      {dealerPlanLimitReached && (
+        <button className="btn" type="button" onClick={() => nav('/dealer/plans')}>
+          Vai a I miei piani
+        </button>
+      )}
       {ok && <p style={{ color: 'var(--accent)' }}>{ok}</p>}
 
       <div className="grid" style={{ marginTop: 12 }}>

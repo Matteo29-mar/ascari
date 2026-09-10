@@ -1,20 +1,25 @@
 import {
   ArveComparableItem,
+  ArveMarketReferenceItem,
   ArvePricingInput,
   ArvePricingResult,
 } from "../../types/arvePricing";
+import { summarizeMarketReferences } from "./marketReferenceService";
 
 function roundToNearest50(value: number): number {
   return Math.max(50, Math.round(value / 50) * 50);
 }
 
-function weightedMedian(items: ArveComparableItem[]): number | null {
+function weightedMedianPrivate(items: ArveComparableItem[]): number | null {
   if (!items.length) return null;
 
   const rows = items
     .map((item) => ({
       price: item.observedPriceEur,
-      weight: Math.max(0.01, item.evidenceWeight * Math.max(0.15, item.similarityScore)),
+      weight: Math.max(
+        0.01,
+        item.evidenceWeight * Math.max(0.15, item.similarityScore)
+      ),
     }))
     .filter((item) => Number.isFinite(item.price) && item.price > 0)
     .sort((a, b) => a.price - b.price);
@@ -63,49 +68,141 @@ function recommendationFor(reference: number, suggested: number) {
   return "KEEP" as const;
 }
 
+function privateStrength(items: ArveComparableItem[]): number {
+  const score = items.reduce(
+    (sum, item) => sum + item.evidenceWeight * item.similarityScore,
+    0
+  );
+  return Math.min(0.78, score / 4);
+}
+
+function marketStrength(items: ArveMarketReferenceItem[]): number {
+  const score = items.reduce(
+    (sum, item) => sum + item.qualityWeight * item.similarityScore,
+    0
+  );
+  return Math.min(0.78, score / 2.6);
+}
+
+function sourceTypeFor(
+  hasPrivate: boolean,
+  hasMarket: boolean
+): ArvePricingResult["sourceType"] {
+  if (hasPrivate && hasMarket) return "HYBRID_FALLBACK";
+  if (hasMarket) return "MARKET_REFERENCE_FALLBACK";
+  if (hasPrivate) return "PRIVATE_DATASET_FALLBACK";
+  return "LOCAL_FALLBACK";
+}
+
 export function localFallbackAnalysis(
   input: ArvePricingInput,
   privateMatches: ArveComparableItem[],
+  marketReferences: ArveMarketReferenceItem[],
   reason?: string
 ): ArvePricingResult {
   const originalReference = getOriginalReference(input);
-  const datasetMedian = weightedMedian(privateMatches);
-  const basePrice = datasetMedian ?? originalReference;
+  const privateMedian = weightedMedianPrivate(privateMatches);
+  const marketSummary = summarizeMarketReferences(marketReferences);
+  const marketMedian = marketSummary.median;
+
+  const pStrength = privateMedian ? privateStrength(privateMatches) : 0;
+  const mStrength = marketMedian ? marketStrength(marketReferences) : 0;
+  const sourceStrength = pStrength + mStrength;
+
+  let basePrice = originalReference;
+  if (privateMedian && marketMedian && sourceStrength > 0) {
+    basePrice =
+      (privateMedian * pStrength + marketMedian * mStrength) / sourceStrength;
+  } else if (privateMedian) {
+    basePrice = privateMedian;
+  } else if (marketMedian) {
+    basePrice = marketMedian;
+  }
 
   const inspectionFactor = input.isPeriziata ? 1.015 : 1;
   const democraticPrice = roundToNearest50(basePrice * inspectionFactor);
   const reservePrice = roundToNearest50(democraticPrice * 0.92);
   const quickSalePrice = roundToNearest50(democraticPrice * 0.84);
 
-  const comparablePrices = privateMatches.map((item) => item.observedPriceEur);
+  const privatePrices = privateMatches.map((item) => item.observedPriceEur);
+  const referenceMins = marketReferences.map((item) => item.priceMin);
+  const referenceMaxs = marketReferences.map((item) => item.priceMax);
+
+  const lowCandidates = [
+    ...(privatePrices.length ? [percentile(privatePrices, 0.2)] : []),
+    ...(referenceMins.length ? [percentile(referenceMins, 0.35)] : []),
+  ];
+  const highCandidates = [
+    ...(privatePrices.length ? [percentile(privatePrices, 0.8)] : []),
+    ...(referenceMaxs.length ? [percentile(referenceMaxs, 0.65)] : []),
+  ];
+
   const marketMin = roundToNearest50(
-    comparablePrices.length ? percentile(comparablePrices, 0.2) : quickSalePrice * 0.95
+    lowCandidates.length
+      ? Math.min(...lowCandidates)
+      : quickSalePrice * 0.95
   );
   const marketMax = roundToNearest50(
-    comparablePrices.length ? percentile(comparablePrices, 0.8) : democraticPrice * 1.08
+    highCandidates.length
+      ? Math.max(...highCandidates)
+      : democraticPrice * 1.08
   );
 
   const realSales = privateMatches.filter(
     (item) => item.evidenceType === "REAL_SALE"
   ).length;
+  const acceptedOffers = privateMatches.filter(
+    (item) => item.evidenceType === "OFFER_ACCEPTED"
+  ).length;
+  const verifiedRefs = marketReferences.filter(
+    (item) => item.quality === "VERIFIED"
+  ).length;
 
   const confidence = Math.min(
-    0.78,
-    0.24 + privateMatches.length * 0.035 + realSales * 0.06
+    0.9,
+    0.18 +
+      privateMatches.length * 0.015 +
+      realSales * 0.09 +
+      acceptedOffers * 0.035 +
+      verifiedRefs * 0.055 +
+      marketSummary.quality * 0.18
   );
 
   const evidenceLevel =
-    realSales >= 3 ? 4 : realSales >= 1 ? 3 : privateMatches.length >= 4 ? 2 : 1;
+    realSales >= 3
+      ? 4
+      : realSales >= 1 || verifiedRefs >= 2
+        ? 3
+        : privateMatches.length >= 3 || marketReferences.length >= 2
+          ? 2
+          : 1;
 
-  const sourceType = privateMatches.length
-    ? "PRIVATE_DATASET_FALLBACK"
-    : "LOCAL_FALLBACK";
+  const sourceType = sourceTypeFor(
+    privateMatches.length > 0,
+    marketReferences.length > 0
+  );
 
-  const message = privateMatches.length
-    ? `ARVE ha stimato i prezzi usando ${privateMatches.length} auto comparabili presenti nel dataset Ascari. La stima è prudente e dà più peso alle vendite realmente concluse.${
+  const pieces: string[] = [];
+  if (marketReferences.length) {
+    pieces.push(
+      `base prezzi ARVE (${marketReferences.length} riferimenti Excel, qualità ${Math.round(
+        marketSummary.quality * 100
+      )}%)`
+    );
+  }
+  if (privateMatches.length) {
+    pieces.push(
+      `${privateMatches.length} comparabili ASCARI, con priorità a vendite e offerte accettate`
+    );
+  }
+
+  const message = pieces.length
+    ? `ARVE ha stimato il valore combinando ${pieces.join(
+        " e "
+      )}. Le previsioni ARVE precedenti non vengono trattate come vendite reali.${
         reason ? ` Motivo fallback AI: ${reason}.` : ""
       }`
-    : `ARVE non ha ancora abbastanza auto comparabili nel dataset. La prima stima parte dai prezzi inseriti e verrà resa più precisa dalle future vendite reali.${
+    : `ARVE non dispone ancora di riferimenti di mercato sufficienti: la stima parte dai tre prezzi inseriti e verrà affinata importando il foglio prezzi e raccogliendo dati reali ASCARI.${
         reason ? ` Motivo fallback AI: ${reason}.` : ""
       }`;
 
@@ -115,19 +212,23 @@ export function localFallbackAnalysis(
     democraticPrice: Math.max(democraticPrice, reservePrice + 50),
     marketMin: Math.min(marketMin, quickSalePrice),
     marketMax: Math.max(marketMax, democraticPrice),
-    marketMedian: democraticPrice,
+    marketMedian: roundToNearest50(basePrice),
     recommendation: recommendationFor(originalReference, democraticPrice),
     message,
     confidence,
     evidenceLevel,
     privateMatchesCount: privateMatches.length,
+    marketReferenceMatchesCount: marketReferences.length,
+    marketReferenceQuality: marketSummary.quality,
+    marketReferenceMedian: marketSummary.median,
     sourceType,
     modelUsed: null,
-    promptVersion: process.env.ARVE_PROMPT_VERSION || "ascari-arve-v1",
+    promptVersion: process.env.ARVE_PROMPT_VERSION || "ascari-arve-v2",
     inputTokens: null,
     outputTokens: null,
     totalTokens: null,
     comparableItems: privateMatches,
+    marketReferenceItems: marketReferences,
     rawResponseJson: reason ? { fallbackReason: reason } : null,
   };
 }

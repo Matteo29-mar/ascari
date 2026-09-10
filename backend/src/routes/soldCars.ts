@@ -51,6 +51,7 @@ async function getAlternativesForCar(carId: number) {
       where: {
         marketStatus: "AVAILABLE",
         visuallyRemovedAt: null,
+        dealerPlanSuspended: false,
         id: {
           notIn: Array.from(selectedIds),
         },

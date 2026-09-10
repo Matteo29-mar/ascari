@@ -4,7 +4,7 @@ import cors from "cors";
 import morgan from "morgan";
 import { PrismaClient } from "@prisma/client";
 import { z } from "zod";
-import { clerkMiddleware } from "@clerk/express";
+import { clerkMiddleware, getAuth } from "@clerk/express";
 import path from "path";
 import cookieParser from "cookie-parser";
 
@@ -12,6 +12,7 @@ import carsRouter from "./routes/cars";
 import offerRoutes from "./routes/offerts";
 import chatRoutes from "./routes/chat";
 import inspectorRoutes from "./routes/inspector";
+import dealerRoutes from "./routes/dealers";
 import inspectionsRoutes from "./routes/inspections";
 import inspectionReportsRouter from "./routes/inspectionReports";
 import stripeRoutes from "./routes/stripe";
@@ -19,6 +20,9 @@ import historyRouter from "./routes/history";
 import soldCarsRoutes from "./routes/soldCars";
 import qrRoutes from "./routes/qr";
 import arvePricingRoutes from "./routes/arvePricing";
+import dealerSubscriptionRoutes from "./routes/dealerSubscriptions";
+import { dealerSubscriptionWebhook } from "./routes/dealerSubscriptionWebhook";
+import { registerDealerDevice } from "./services/dealerSubscriptionService";
 
 import { startSoldCarsCleanupJob } from "./jobs/soldCarsCleanup";
 
@@ -27,6 +31,14 @@ const prisma = new PrismaClient();
 const port = Number(process.env.PORT) || 4002;
 
 const ORIGIN = process.env.CORS_ORIGIN || "http://localhost:5173";
+
+// Il webhook Stripe deve ricevere il body RAW per verificare la firma.
+// Va dichiarato prima di express.json().
+app.post(
+  "/api/stripe/dealer-subscriptions/webhook",
+  express.raw({ type: "application/json" }),
+  dealerSubscriptionWebhook
+);
 
 // body parser
 app.use(express.json({ limit: "25mb" }));
@@ -43,6 +55,53 @@ app.use(
 // Clerk
 app.use(clerkMiddleware());
 
+// Limite dispositivi concessionaria.
+// Le route di onboarding/profilo/abbonamento restano accessibili anche prima
+// dell'attivazione del piano; sulle altre API un dealer deve avere un piano
+// attivo e un dispositivo registrabile entro il limite STARTER/ADVANCED.
+app.use(async (req, res, next) => {
+  try {
+    if (!req.path.startsWith("/api/")) return next();
+
+    const exempt =
+      req.path.startsWith("/api/dealer-subscriptions") ||
+      req.path.startsWith("/api/dealers") ||
+      req.path === "/api/ping";
+    if (exempt) return next();
+
+    const { userId: clerkId } = getAuth(req);
+    if (!clerkId) return next();
+
+    const user = await prisma.user.findUnique({
+      where: { clerkId },
+      select: { id: true, dealerProfile: { select: { id: true } } },
+    });
+    if (!user?.dealerProfile) return next();
+
+    const deviceId = String(req.headers["x-ascari-device-id"] || "").trim();
+    if (!deviceId) {
+      return res.status(403).json({
+        code: "DEALER_DEVICE_REQUIRED",
+        error: "Dispositivo concessionaria non identificato. Ricarica ASCARI.",
+      });
+    }
+
+    await registerDealerDevice({
+      userId: user.id,
+      deviceId,
+      label: String(req.headers["x-ascari-device-label"] || "Browser"),
+      userAgent: req.headers["user-agent"] || null,
+    });
+
+    return next();
+  } catch (error: any) {
+    return res.status(error?.status || 500).json({
+      code: error?.code,
+      error: error?.message || "Accesso concessionaria non disponibile",
+    });
+  }
+});
+
 // log
 app.use(morgan("dev"));
 
@@ -55,7 +114,8 @@ app.use((req, res, next) => {
     req.path.startsWith("/api/offers") ||
     req.path.startsWith("/api/sold-cars") ||
     req.path.startsWith("/api/history") ||
-    req.path.startsWith("/api/arve")
+    req.path.startsWith("/api/arve") ||
+    req.path.startsWith("/api/dealer-subscriptions")
   ) {
     res.set("Cache-Control", "no-store");
   }
@@ -83,11 +143,13 @@ app.use("/api/cars", carsRouter);
 app.use("/api/offers", offerRoutes);
 app.use("/api/chat", chatRoutes);
 app.use("/api/inspector", inspectorRoutes);
+app.use("/api/dealers", dealerRoutes);
 app.use("/api/inspections", inspectionsRoutes);
 app.use("/api/inspection-reports", inspectionReportsRouter);
 app.use("/api/stripe", stripeRoutes);
 app.use("/api/history", historyRouter);
 app.use("/api/arve", arvePricingRoutes);
+app.use("/api/dealer-subscriptions", dealerSubscriptionRoutes);
 
 // Route dedicata al ciclo auto vendute
 app.use("/api/sold-cars", soldCarsRoutes);
@@ -121,9 +183,12 @@ const NearbyQuery = z.object({
   radiusKm: z.coerce.number().default(5),
 });
 
-app.post("/cars", async (req, res) => {
-  const car = await prisma.car.create({ data: req.body });
-  res.status(201).json(car);
+// Endpoint legacy disabilitato: la creazione deve passare da /api/cars,
+// dove vengono applicati autenticazione, validazioni e limiti del piano dealer.
+app.post("/cars", (_req, res) => {
+  return res.status(410).json({
+    error: "Endpoint legacy disabilitato. Usa /api/cars.",
+  });
 });
 
 app.get("/cars/nearby", async (req, res) => {
@@ -141,6 +206,7 @@ app.get("/cars/nearby", async (req, res) => {
     where: {
       marketStatus: "AVAILABLE",
       visuallyRemovedAt: null,
+      dealerPlanSuspended: false,
       latitude: { gte: lat - maxLatDelta, lte: lat + maxLatDelta },
       longitude: { gte: lon - maxLonDelta, lte: lon + maxLonDelta },
     },
@@ -189,6 +255,7 @@ app.get("/cars/search", async (req, res) => {
   const where = {
     marketStatus: "AVAILABLE",
     visuallyRemovedAt: null,
+    dealerPlanSuspended: false,
     AND: parts.map((p) => ({
       OR: [
         { make: { contains: p, mode: "insensitive" } },
@@ -210,6 +277,7 @@ app.get("/cars", async (_req, res) => {
     where: {
       marketStatus: "AVAILABLE",
       visuallyRemovedAt: null,
+      dealerPlanSuspended: false,
     },
     orderBy: { id: "asc" },
   });
@@ -226,7 +294,7 @@ app.get("/cars/:id", async (req, res) => {
 
   const car = await prisma.car.findUnique({ where: { id } });
 
-  if (!car) {
+  if (!car || car.dealerPlanSuspended) {
     return res.status(404).json({ error: "Not found" });
   }
 

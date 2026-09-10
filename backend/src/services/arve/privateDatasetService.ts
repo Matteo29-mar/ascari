@@ -28,7 +28,11 @@ function tokenSimilarity(left: string, right: string): number {
   return union > 0 ? intersection / union : 0;
 }
 
-function proximityScore(left: number | null, right: number | null, tolerance: number): number {
+function proximityScore(
+  left: number | null,
+  right: number | null,
+  tolerance: number
+): number {
   if (left == null || right == null || tolerance <= 0) return 0;
   const distance = Math.abs(left - right);
   return Math.max(0, 1 - distance / tolerance);
@@ -52,13 +56,16 @@ function calculateSimilarity(input: ArvePricingInput, car: any): number {
   return Math.min(1, Math.max(0, score));
 }
 
-function averagePositive(values: Array<number | null | undefined>): number | null {
-  const valid = values.filter(
-    (value): value is number => Number.isFinite(value) && Number(value) > 0
-  );
+function medianPositive(values: Array<number | null | undefined>): number | null {
+  const valid = values
+    .filter(
+      (value): value is number => Number.isFinite(value) && Number(value) > 0
+    )
+    .map(Number)
+    .sort((a, b) => a - b);
 
   if (!valid.length) return null;
-  return valid.reduce((sum, value) => sum + value, 0) / valid.length;
+  return valid[Math.floor(valid.length / 2)];
 }
 
 function resolveEvidence(car: any): {
@@ -84,54 +91,36 @@ function resolveEvidence(car: any): {
     };
   }
 
-  if (analysis?.userDecision === "ACCEPTED") {
+  const acceptedOffer = car.offers?.find(
+    (offer: any) => offer.status === "ACCEPTED" && Number(offer.amount) > 0
+  );
+
+  if (acceptedOffer) {
     return {
-      observedPriceEur:
-        averagePositive([
-          car.offerPrice1,
-          car.offerPrice2,
-          car.offerPrice3,
-        ]) ?? analysis.democraticPrice,
-      evidenceType: "ARVE_ACCEPTED",
-      evidenceWeight: 0.65,
+      observedPriceEur: Number(acceptedOffer.amount),
+      evidenceType: "OFFER_ACCEPTED",
+      evidenceWeight: 0.72,
       soldAt: null,
     };
   }
 
-  if (analysis?.userDecision === "REJECTED") {
-    return {
-      observedPriceEur:
-        averagePositive([
-          analysis.originalOfferPrice1,
-          analysis.originalOfferPrice2,
-          analysis.originalOfferPrice3,
-        ]) ?? analysis.democraticPrice,
-      evidenceType: "ARVE_REJECTED",
-      evidenceWeight: 0.35,
-      soldAt: null,
-    };
-  }
-
-  if (analysis) {
-    return {
-      observedPriceEur: analysis.democraticPrice,
-      evidenceType: "ARVE_PENDING",
-      evidenceWeight: 0.25,
-      soldAt: null,
-    };
-  }
-
+  // Importante: non usiamo democraticPrice/quickSalePrice/reservePrice di ARVE
+  // come prova di mercato. Una previsione salvata resta una previsione e non
+  // deve auto-rinforzare le analisi future.
   return {
     observedPriceEur:
       car.priceEur ??
-      averagePositive([car.offerPrice1, car.offerPrice2, car.offerPrice3]),
+      medianPositive([car.offerPrice1, car.offerPrice2, car.offerPrice3]),
     evidenceType: "ACTIVE_LISTING",
-    evidenceWeight: 0.2,
+    evidenceWeight: 0.18,
     soldAt: null,
   };
 }
 
-function daysBetween(start: Date | null | undefined, end: Date | null | undefined): number | null {
+function daysBetween(
+  start: Date | null | undefined,
+  end: Date | null | undefined
+): number | null {
   if (!start || !end) return null;
   const milliseconds = end.getTime() - start.getTime();
   if (milliseconds < 0) return null;
@@ -146,6 +135,20 @@ const comparableInclude = {
     select: {
       amountEur: true,
       soldAt: true,
+    },
+  },
+  offers: {
+    where: {
+      status: "ACCEPTED",
+    },
+    orderBy: {
+      createdAt: "desc" as const,
+    },
+    take: 1,
+    select: {
+      amount: true,
+      status: true,
+      createdAt: true,
     },
   },
 };
@@ -201,7 +204,8 @@ export async function findPrivateDatasetMatches(
       }
 
       const similarityScore = calculateSimilarity(input, car);
-      const rankingScore = similarityScore * 0.75 + evidence.evidenceWeight * 0.25;
+      const rankingScore =
+        similarityScore * 0.75 + evidence.evidenceWeight * 0.25;
 
       return {
         carId: car.id,
@@ -225,7 +229,9 @@ export async function findPrivateDatasetMatches(
       } satisfies ArveComparableItem;
     })
     .filter((row): row is ArveComparableItem => Boolean(row))
-    .filter((row) => row.similarityScore >= 0.18 || row.evidenceType === "REAL_SALE")
+    .filter(
+      (row) => row.similarityScore >= 0.18 || row.evidenceType === "REAL_SALE"
+    )
     .sort((a, b) => b.rankingScore - a.rankingScore)
     .slice(0, limit);
 }

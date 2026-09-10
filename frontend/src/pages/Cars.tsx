@@ -28,6 +28,12 @@ type Car = {
   coverUrl?: string | null;
   likedByMe?: boolean;
   owner?: { clerkId: string };
+  sellerType?: "PRIVATE" | "DEALER";
+  dealer?: {
+    id: string;
+    name: string;
+    logoUrl?: string | null;
+  } | null;
   paymentStatus?: string | null;
   marketStatus?: "AVAILABLE" | "SOLD_PENDING_REMOVAL" | "REMOVED_AFTER_SALE";
   soldAt?: string | null;
@@ -615,7 +621,8 @@ async function loadAll(nextPage = page, nextPageSize = pageSize) {
       <HomeHeroCarousel />
       <h1 className="h1">Auto disponibili</h1>
 
-      <div className="cars-controls-stack">
+      <div className="cars-controls-stack" id="filtri">
+        <span id="marchi-modelli" className="ascari-anchor-target" aria-hidden="true" />
         <div
           id="cars-search-intro"
           className={`cars-intro-search${mobileAdvancedOpen ? " is-mobile-open" : ""}`}
@@ -820,6 +827,17 @@ async function loadAll(nextPage = page, nextPageSize = pageSize) {
                   <p className="muted" style={{ margin: "8px 0 0" }}>
                     Distanza: {car.distanceKm.toFixed(1)} km
                   </p>
+                )}
+
+                {car.dealer && (
+                  <Link
+                    to={`/dealers/${car.dealer.id}`}
+                    className="cars-dealer-badge"
+                    title={`Visita ${car.dealer.name}`}
+                  >
+                    <span aria-hidden>●</span>
+                    {car.dealer.name}
+                  </Link>
                 )}
 
                 <div className="footer-actions">

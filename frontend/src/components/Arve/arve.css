@@ -149,6 +149,72 @@
   white-space: nowrap;
 }
 
+
+.arve-original-prices {
+  display: grid;
+  gap: 8px;
+  margin-top: 16px;
+  padding: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 15px;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.arve-original-prices__title {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 2px;
+}
+
+.arve-original-prices__title span {
+  color: #8fa3b5;
+  font-size: 0.78rem;
+}
+
+.arve-original-price-row {
+  display: grid;
+  grid-template-columns: minmax(70px, 1fr) auto minmax(110px, auto);
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.arve-original-price-row > span {
+  color: #aebdca;
+}
+
+.arve-original-price-row > strong {
+  color: #f7fbff;
+}
+
+.arve-price-position {
+  justify-self: end;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-style: normal;
+  font-weight: 800;
+}
+
+.arve-price-position--ok,
+.arve-price-position--range {
+  background: rgba(75, 224, 220, 0.1);
+  color: #7af2ef;
+}
+
+.arve-price-position--high {
+  background: rgba(255, 174, 76, 0.11);
+  color: #ffc47a;
+}
+
+.arve-price-position--low {
+  background: rgba(143, 95, 232, 0.14);
+  color: #c4a8ff;
+}
+
 .arve-explanation {
   margin-top: 16px;
   padding: 15px;
@@ -249,6 +315,20 @@
   .arve-price-card {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .arve-original-prices__title {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .arve-original-price-row {
+    grid-template-columns: 1fr auto;
+  }
+
+  .arve-price-position {
+    grid-column: 1 / -1;
+    justify-self: start;
   }
 
   .arve-modal__actions {

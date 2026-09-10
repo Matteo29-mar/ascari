@@ -24,6 +24,8 @@ import {
   createCarQrToken,
   ensureCarQrToken,
 } from "../lib/carQr";
+import { checkDealerCarCreationLimit, getDealerPlanState } from "../services/dealerSubscriptionService";
+import { safeRecordArveMarketObservation } from "../services/arve/marketObservationService";
 
 const router = express.Router();
 
@@ -53,6 +55,7 @@ const upload = multer({
 const AVAILABLE_CAR_WHERE: Prisma.CarWhereInput = {
   marketStatus: CarMarketStatus.AVAILABLE,
   visuallyRemovedAt: null,
+  dealerPlanSuspended: false,
 };
 
 const GARAGE_VISIBLE_CAR_WHERE: Prisma.CarWhereInput = {
@@ -401,11 +404,20 @@ function buildCarCardSelect(userId?: string): Prisma.CarSelect {
     soldAt: true,
     removalScheduledAt: true,
     visuallyRemovedAt: true,
+    dealerPlanSuspended: true,
+    dealerPlanSuspendedAt: true,
 
     createdAt: true,
     owner: {
       select: {
         clerkId: true,
+        dealerProfile: {
+          select: {
+            id: true,
+            dealerName: true,
+            logoUrl: true,
+          },
+        },
       },
     },
     ...(userId
@@ -421,7 +433,19 @@ function buildCarCardSelect(userId?: string): Prisma.CarSelect {
 
 function buildCarDetailInclude(userId?: string): Prisma.CarInclude {
   return {
-    owner: true,
+    owner: {
+      select: {
+        clerkId: true,
+        name: true,
+        dealerProfile: {
+          select: {
+            id: true,
+            dealerName: true,
+            logoUrl: true,
+          },
+        },
+      },
+    },
     ...(userId
       ? {
           likes: {
@@ -437,14 +461,28 @@ function buildCarDetailInclude(userId?: string): Prisma.CarInclude {
   };
 }
 
+function dealerSummaryFromCar(car: any) {
+  const profile = car?.owner?.dealerProfile;
+  if (!profile) return null;
+
+  return {
+    id: profile.id,
+    name: profile.dealerName,
+    logoUrl: profile.logoUrl ?? null,
+  };
+}
+
 function toCarCard(car: any, hasUser: boolean) {
   const { likes, ...rest } = car;
+  const dealer = dealerSummaryFromCar(car);
 
   return {
     ...rest,
     photos: stripBase64Photos(car.coverUrl, car.photos),
     coverUrl: isDataImage(car.coverUrl) ? null : car.coverUrl,
     likedByMe: hasUser ? (likes?.length ?? 0) > 0 : false,
+    sellerType: dealer ? "DEALER" : "PRIVATE",
+    dealer,
   };
 }
 
@@ -454,12 +492,15 @@ function mapCarCards(cars: any[], hasUser: boolean) {
 
 function toCarDetail(car: any, hasUser: boolean) {
   const { likes, ...rest } = car;
+  const dealer = dealerSummaryFromCar(car);
 
   return {
     ...rest,
     photos: stripBase64Photos(car.coverUrl, car.photos),
     coverUrl: isDataImage(car.coverUrl) ? null : car.coverUrl,
     likedByMe: hasUser ? (likes?.length ?? 0) > 0 : false,
+    sellerType: dealer ? "DEALER" : "PRIVATE",
+    dealer,
   };
 }
 
@@ -557,7 +598,11 @@ router.get("/:id/perizia/download", async (req, res) => {
         inspectionRequests: {
           orderBy: { createdAt: "desc" },
           include: {
-            report: true,
+            report: {
+              include: {
+                ratings: { orderBy: { id: "asc" } },
+              },
+            },
             inspector: {
               include: {
                 user: {
@@ -624,6 +669,17 @@ router.post("/", async (req, res) => {
     const name = (sessionClaims as any)?.fullName || undefined;
 
     const user = await ensureUserInDb(clerkUserId, email ?? null, name ?? null);
+
+    const dealerLimit = await checkDealerCarCreationLimit(user.id);
+    if (dealerLimit.isDealer && !dealerLimit.allowed) {
+      return res.status(402).json({
+        code: "DEALER_SUBSCRIPTION_REQUIRED",
+        error: "Per pubblicare auto come concessionaria devi attivare STARTER o ADVANCED.",
+        plan: dealerLimit.plan,
+        subscriptionRequired: true,
+        upgradeRequired: true,
+      });
+    }
 
     const {
       make,
@@ -728,6 +784,15 @@ router.post("/", async (req, res) => {
         qrCodeCreatedAt: new Date(),
       },
       select: buildCarCardSelect(user.id),
+    });
+
+    await safeRecordArveMarketObservation(prisma, {
+      type: "LISTING_CREATED",
+      externalKey: `listing:${car.id}`,
+      car,
+      metadata: {
+        source: "CAR_CREATE",
+      },
     });
 
     return res.json({
@@ -965,6 +1030,7 @@ router.get("/nearby", async (req, res) => {
           AND ("paymentStatus" IS NULL OR "paymentStatus" <> 'SOLD')
           AND "soldAt" IS NULL
           AND "visuallyRemovedAt" IS NULL
+          AND "dealerPlanSuspended" = false
       ) AS nearby
       WHERE nearby."distanceKm" <= ${radiusKm}
       ORDER BY nearby."distanceKm" ASC, nearby.id DESC
@@ -1128,6 +1194,7 @@ router.get("/", async (req, res) => {
       },
       soldAt: null,
       visuallyRemovedAt: null,
+      dealerPlanSuspended: false,
     };
 
     const [total, cars] = await Promise.all([
@@ -1232,6 +1299,7 @@ router.get("/:id/availability", async (req, res) => {
         soldAt: true,
         removalScheduledAt: true,
         visuallyRemovedAt: true,
+        dealerPlanSuspended: true,
       },
     });
 
@@ -1244,7 +1312,10 @@ router.get("/:id/availability", async (req, res) => {
       );
     }
 
-    const isAvailable = car.marketStatus === "AVAILABLE" && !car.visuallyRemovedAt;
+    const isAvailable =
+      car.marketStatus === "AVAILABLE" &&
+      !car.visuallyRemovedAt &&
+      !car.dealerPlanSuspended;
 
     let alternatives: any[] = [];
 
@@ -1258,6 +1329,7 @@ router.get("/:id/availability", async (req, res) => {
           where: {
             marketStatus: "AVAILABLE",
             visuallyRemovedAt: null,
+            dealerPlanSuspended: false,
             id: {
               notIn: Array.from(selectedIds),
             },
@@ -1426,6 +1498,20 @@ router.get("/:id/qr-stats", async (req, res) => {
       return res.status(403).json({ error: "Not allowed" });
     }
 
+    const dealerProfile = await prisma.dealerProfile.findUnique({
+      where: { userId: user.id },
+      select: { id: true },
+    });
+    if (dealerProfile) {
+      const planState = await getDealerPlanState(user.id, { reconcile: false });
+      if (!planState.statsEnabled) {
+        return res.status(403).json({
+          code: "DEALER_ADVANCED_REQUIRED",
+          error: "Le statistiche delle auto sono disponibili solo con il piano ADVANCED.",
+        });
+      }
+    }
+
     const now = new Date();
 
     const startToday = new Date(now);
@@ -1544,6 +1630,10 @@ router.get("/:id", async (req, res) => {
       return res.status(404).json({ error: "Car not found" });
     }
 
+    if (car.dealerPlanSuspended && car.ownerId !== user?.id) {
+      return res.status(404).json({ error: "Car not found" });
+    }
+
     return res.json(toCarDetail(car, !!user));
   } catch (err) {
     console.error("GET /api/cars/:id error:", err);
@@ -1577,7 +1667,11 @@ router.post("/:carId/like", async (req, res) => {
       return res.status(404).json({ error: "Car not found" });
     }
 
-    if (car.marketStatus !== "AVAILABLE" || car.visuallyRemovedAt) {
+    if (
+      car.marketStatus !== "AVAILABLE" ||
+      car.visuallyRemovedAt ||
+      car.dealerPlanSuspended
+    ) {
       return res.status(400).json({
         error: "Questa auto non è più disponibile.",
       });

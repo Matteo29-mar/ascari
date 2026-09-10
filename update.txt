@@ -1030,3 +1030,91 @@ sal 31/07/2026
     in vendita, contatti, logo e nome della concessionaria e tutte le sue autovetture ( vedere foto due con link). 
     In più vorrei fare una modifica alla mappa, adesso i puntini sono verdi, ma vorrei una legenda che mostra la 
     differenza tra puntini verdi =auto private e puntini rossi = auto di concessionarie.
+
+update 10/08/2026
+1. creazione del sistema di abbonamento con stripe connect ( come per i pagamenti collegati sull'account) 
+    per le concessionarie, il nocciolo è una serie di 3 abbonamenti 5 auto nel piano free( automatico), poi piano top 10/15 auto
+    con statistiche costo 25 euro al mese, piano premium auto illimitate da vendere, con statistiche costo 50 euro al mese. 
+    con una sezione nella icona del profilo i miei piani dove vedi i piani che uno può sottoscrivere 
+
+update 11/08/2026
+1. visionare il codice che è stato scritto
+	- nei .json -> aggiornate le versioni di stripe
+	- prisma, inseriti nuovi enum per gli abbonamenti, nuova classe dealerprofile(concessionario) e altro
+	- index.ts è stato inserito il webhook(?) per abbonamento dealer
+	- creato nuovo file dealerplans per i piani dell'abbonamento funzione che spiega
+	- aggiunte funzionalità varie in cars per le sospensioni dei piani free
+	- nuovo file per il concessionario con le rotte nuove
+2. esegure dei test locali
+    - creazione auto nuova, visionare arve, mappa e campi sulla mappa
+    - concessionario, superare il limite auto free, vedere mappa, fare un piano pagamento, vendere auto
+    - comprare auto
+    - concessionario fare il flusso e richiedere il cashout
+    - vendere un auto
+3. creato una modifica nel periziatore inseririmento logo, modificato pop up per la disponibilità e creato un nuovo modo per salvare le disponibilià per gli slot disponibili
+    ovvero fascia oraria, giorno orario e settimana intera
+
+
+sal 14/08/2026
+1. vedere come fare un multi-pubblicatore(DMS) per vendere auto tramite gestionale fuori ascari, concessionario preparara tot auto
+    e tramite questo software pubblica le auto su tot siti di vendita, forcesales e manager car( questi sono i pubblicatori)
+2. rivedere abbonamento per FREE, TOP, PREMIUM. Eliminare FREE e vedere TOP(50 euro con auto illimitate) E PREMIUM(125 euro auto
+    illimitate, statistiche e arve)
+3. vedere sottoaccount per le concessionarie o multi dispositivo
+
+update 19/08/2026
+1. Inserimento del file excel di ARVE in ascari e modifica della logica, il flusso funziona Così
+    Auto caricata su ASCARI
+            ↓
+    Dati card + 3 prezzi utente
+            ↓
+    Base prezzi Excel
+            +
+    Dataset storico ASCARI
+            ↓
+    Matching per
+    marca/modello/alimentazione
+    anno/km/allestimento
+            ↓
+    Pricing Engine
+            ↓
+    OpenAI
+            ↓
+    3 prezzi ARVE
+    + fascia di mercato
+    + confidenza
+    + spiegazione
+            ↓
+    Salvataggio analisi
+
+    eseguito il primo test del nuovo arve sembra dare buoni risultato ha suggerito un prezzo dell excel
+
+update 20/08/2026
+1. quando una concessionaria si iscrive viene tolto il piano FREE, cambiano i piani con
+STARTER 50 euro al mese e dentro hai auto illimitate, gestione fino a 10 dispositivi collegati
+ADVANCED 125 euro al mese e dentro hai auto illimitate, gestione fino a 20 dispositivi collegati e statistiche per ogni auto 
+2. la legenda della mappa con il colore dei pallini delle auto private e del concessionario non lo voglio in basso ma in alto nella barra
+3. le statistiche delle auto se sono un concessionario, le vedo se vado nella sezione "il mio garage" invece se sono un concessionario e ho scelto il piano starter non devo vederle
+4. vorrei cambiare il modo in cui il periziatore fa la perizia al posto di scrivere ogni volta, ti invio un'immagine che di un'auto alto e di lato in cui ci saranno dei punti dove il periziatore clicca e da un voto da 1 a 5 più e basso e il punteggio vuol dire non buono 1= da buttare 2= danneggiato 3= normale 4= buone condizioni 5 = come nuovo. Su carozzeria, interni, mortore, meccanica, pneumatici, elettronica e test drive. Per ogni punto da un punteggio e può scrivere una nota per appuntare dei particolari. Infine il parere finale e come facoltativo un parere sulla valutazione dell'auto. 
+5. Imbastiamo una sezione nel footer della home delle pagine anche se sei loggato e no in tutte le pagine al fondo. 
+Un recap dei link divisi per :
+società		servizi			area clienti
+chi siamo	mappa delle auto	login
+informazioni	filtri			registrati come periziatore
+contatti	marchi e modelli	registrati come concessionaria
+
+per registrati come periziatore/concessionaria apre la sezione di login classica con clerk, una volta effettuato la login apre subito la sezione per la registrazione del periziatore o concessionario
+6. solo per le concessionarie, creare la sezione recensioni(solo per i privati loggati) e il rating che viene dato 
+
+resoconto
+1. funziona devo fare il test sul abbonamneto con carta prova
+2. legenda spostata ma ora non vedo le auto del concessionario se non faccio abbonamento dealer 
+3. da testare
+4. cambiato il modo in cui si fanno le perizie, con i punti e lo schema auto
+5. footer funziona da migliorare 
+
+
+sal 21/08/2026
+1. possibilità di inserimento excel simile prezzo di ritiro per il concessionario (da Mattia) inserire nella parte del concessionario quando posta usato, non nel privato 
+    concessionario ( 4 prezzi incluso nel 125 euro ) e privato 3 prezzi 
+2. periziatore possibilià carica foto con danni dentro il pdf del resoconto.

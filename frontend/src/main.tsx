@@ -39,16 +39,24 @@ import PaymentReturn from "./pages/PaymentReturn";
 import History from "./pages/History";
 import HistoryDetail from "./pages/HistoryDetail";
 import InspectorPayments from "./pages/InspectorPayments";
+import DealerRegister from "./pages/DealerRegister";
+import DealerProfile from "./pages/DealerProfile";
+import DealerPlans from "./pages/DealerPlans";
+import StaticInfoPage from "./pages/StaticInfoPage";
 
 import { AuthButtons } from "./components/AuthButtons";
 import AscariPopup from "./components/AscariPopup";
+import AscariFooter from "./components/AscariFooter";
 import { OfferProvider, useOffers } from "./context/OfferContext";
 import { ThemeProvider, useTheme } from "./context/ThemeContext";
 import { useRole } from "./hooks/useRole";
+import { getDealerDeviceLabel, getOrCreateDealerDeviceId } from "./utils/dealerDevice";
 import {
   getUnreadChatCount,
   getStripeAccountStatus,
   createStripeOnboardingLink,
+  getDealerSubscription,
+  registerDealerDevice,
 } from "./api";
 
 type StripeAccountStatus = {
@@ -114,6 +122,22 @@ function SeiAltroMenu({
             }}
           >
             Periziatore
+          </button>
+          <button
+            className={`btn-link ${mobile ? "nav-mobile-link" : ""}`}
+            type="button"
+            style={{
+              width: "100%",
+              textAlign: "left",
+              padding: mobile ? "12px 14px" : "10px 10px",
+            }}
+            onClick={() => {
+              setOpen(false);
+              onNavigate?.();
+              nav("/dealer/register");
+            }}
+          >
+            Concessionario
           </button>
         </div>
       )}
@@ -364,6 +388,7 @@ function Layout({ children }: { children: React.ReactNode }) {
 
   const { role, isLoaded: roleLoaded } = useRole();
   const isInspector = role === "PERIZIATORE";
+  const isDealer = role === "CONCESSIONARIO";
 
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [unreadChatCount, setUnreadChatCount] = useState(0);
@@ -435,6 +460,52 @@ function Layout({ children }: { children: React.ReactNode }) {
       window.removeEventListener("ascari:refresh-chat-unread", onUnreadRefresh);
     };
   }, [loadUnreadChatCount]);
+
+  useEffect(() => {
+    if (!isSignedIn || !isDealer) return;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const token = await getToken();
+        if (!token || cancelled) return;
+
+        const subscription = await getDealerSubscription(token);
+        const currentPlan = subscription?.current?.plan;
+
+        if (!currentPlan) {
+          if (
+            location.pathname !== "/dealer/plans" &&
+            location.pathname !== "/dealer/register"
+          ) {
+            nav("/dealer/plans", { replace: true });
+          }
+          return;
+        }
+
+        await registerDealerDevice(
+          {
+            deviceId: getOrCreateDealerDeviceId(),
+            label: getDealerDeviceLabel(),
+            userAgent: navigator.userAgent,
+          },
+          token
+        );
+      } catch (e: any) {
+        const code = e?.response?.data?.code;
+        if (
+          code === "DEALER_DEVICE_LIMIT_REACHED" &&
+          location.pathname !== "/dealer/plans"
+        ) {
+          nav("/dealer/plans", { replace: true });
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isSignedIn, isDealer, getToken, location.pathname, nav]);
 
   if (isSignedIn && !roleLoaded) return <div className="container">Loading…</div>;
 
@@ -512,7 +583,17 @@ function Layout({ children }: { children: React.ReactNode }) {
         </Link>
       )} */}
 
-      {isSignedIn && (
+      {isSignedIn && isDealer && (
+        <Link
+          to="/dealer/me"
+          className={mobile ? "nav-mobile-link" : ""}
+          onClick={mobile ? closeMobileMenu : undefined}
+        >
+          Concessionaria
+        </Link>
+      )}
+
+      {isSignedIn && !isDealer && (
         <SeiAltroMenu mobile={mobile} onNavigate={mobile ? closeMobileMenu : undefined} />
       )}
     </>
@@ -642,6 +723,7 @@ function Layout({ children }: { children: React.ReactNode }) {
       </nav>
 
       <div className="container page-container">{children}</div>
+      <AscariFooter />
     </>
   );
 }
@@ -701,6 +783,33 @@ function AppRoutes() {
           element={
             <Layout>
               <Register />
+            </Layout>
+          }
+        />
+
+        <Route
+          path="/chi-siamo"
+          element={
+            <Layout>
+              <StaticInfoPage page="chi-siamo" />
+            </Layout>
+          }
+        />
+
+        <Route
+          path="/informazioni"
+          element={
+            <Layout>
+              <StaticInfoPage page="informazioni" />
+            </Layout>
+          }
+        />
+
+        <Route
+          path="/contatti"
+          element={
+            <Layout>
+              <StaticInfoPage page="contatti" />
             </Layout>
           }
         />
@@ -827,6 +936,48 @@ function AppRoutes() {
           element={
             <Layout>
               <ExploreMap />
+            </Layout>
+          }
+        />
+
+        <Route
+          path="/dealer/register"
+          element={
+            <Layout>
+              <RequireAuth>
+                <DealerRegister />
+              </RequireAuth>
+            </Layout>
+          }
+        />
+
+        <Route
+          path="/dealer/me"
+          element={
+            <Layout>
+              <RequireAuth>
+                <DealerProfile mine />
+              </RequireAuth>
+            </Layout>
+          }
+        />
+
+        <Route
+          path="/dealer/plans"
+          element={
+            <Layout>
+              <RequireAuth>
+                <DealerPlans />
+              </RequireAuth>
+            </Layout>
+          }
+        />
+
+        <Route
+          path="/dealers/:id"
+          element={
+            <Layout>
+              <DealerProfile />
             </Layout>
           }
         />

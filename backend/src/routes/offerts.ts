@@ -9,6 +9,7 @@ import {
   runSoldCarsVisualCleanup,
 } from "../lib/carSaleLifecycle";
 import { sendOfferReceivedEmail } from "../lib/email/sendOfferReceivedEmail";
+import { safeRecordArveMarketObservation } from "../services/arve/marketObservationService";
 
 const router = Router();
 
@@ -91,6 +92,17 @@ router.post("/", async (req, res) => {
         amount: Number(amount),
         status: "PENDING",
       },
+    });
+
+    await safeRecordArveMarketObservation(prisma, {
+      type: "OFFER_RECEIVED",
+      externalKey: `offer:${offer.id}:received`,
+      car,
+      amountEur: offer.amount,
+      metadata: {
+        offerId: offer.id,
+      },
+      occurredAt: offer.createdAt,
     });
 
     /**
@@ -230,6 +242,16 @@ router.post("/:id/accept", async (req, res) => {
     const updatedOffer = await prisma.offer.update({
       where: { id: offer.id },
       data: { status: "ACCEPTED" },
+    });
+
+    await safeRecordArveMarketObservation(prisma, {
+      type: "OFFER_ACCEPTED",
+      externalKey: `offer:${offer.id}:accepted`,
+      car: offer.car,
+      amountEur: updatedOffer.amount,
+      metadata: {
+        offerId: offer.id,
+      },
     });
 
     return res.json({

@@ -28,6 +28,12 @@ type CarPin = {
   distanceKm: number;
   fuelType?: string | null;
   mileageKm?: number | null;
+  sellerType?: "PRIVATE" | "DEALER";
+  dealer?: {
+    id: string;
+    name: string;
+    logoUrl?: string | null;
+  } | null;
 };
 
 const MILAN = { lat: 45.4642, lng: 9.19 };
@@ -388,6 +394,11 @@ export default function ExploreMap() {
 
           {filtersOpen && (
             <div className="explore-map-toolbar-row">
+              <div className="explore-map-toolbar-legend" aria-label="Legenda venditori">
+                <span><i className="explore-legend-dot private" /> Privati</span>
+                <span><i className="explore-legend-dot dealer" /> Concessionarie</span>
+              </div>
+
               <div className="explore-geocoder-wrap">
                 <div ref={geocoderContainerRef} className="explore-geocoder" />
               </div>
@@ -512,7 +523,7 @@ export default function ExploreMap() {
                 height: 14,
                 borderRadius: 999,
                 border: "2px solid white",
-                background: "#34f5c5",
+                background: c.sellerType === "DEALER" ? "#ef4444" : "#34f5c5",
                 boxShadow: "0 6px 18px rgba(0,0,0,0.35)",
                 cursor: "pointer",
               }}
@@ -611,6 +622,17 @@ export default function ExploreMap() {
                   <div style={{ opacity: 0.75, fontSize: 12 }}>
                     {selected.distanceKm.toFixed(1)} km • {selected.year}
                   </div>
+
+                  {selected.dealer && (
+                    <button
+                      type="button"
+                      className="explore-popup-dealer"
+                      onClick={() => navigate(`/dealers/${selected.dealer!.id}`)}
+                    >
+                      <span>Concessionario</span>
+                      <strong>{selected.dealer.name}</strong>
+                    </button>
+                  )}
 
                   <div style={{ height: 8 }} />
 

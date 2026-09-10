@@ -16,6 +16,7 @@ export function AuthButtons() {
   const { role } = useRole();
 
   const isInspector = role === "PERIZIATORE";
+  const isDealer = role === "CONCESSIONARIO";
 
   return (
     <div
@@ -65,6 +66,14 @@ export function AuthButtons() {
                 labelIcon={<span style={{ fontSize: 16 }}>🏦</span>}
                 onClick={() => navigate(isInspector ? "/inspector/payments" : "/payments")}
               />
+
+              {isDealer && (
+                <UserButton.Action
+                  label="I miei piani"
+                  labelIcon={<span style={{ fontSize: 16 }}>💳</span>}
+                  onClick={() => navigate("/dealer/plans")}
+                />
+              )}
 
               {!isInspector && (
                 <UserButton.Action

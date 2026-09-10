@@ -21,6 +21,26 @@ function formatEuro(value: number) {
   }).format(value);
 }
 
+function pricePosition(value: number, analysis: ArvePricingAnalysis) {
+  if (value > analysis.marketMax) {
+    return { label: 'Sopra mercato', tone: 'high' };
+  }
+
+  if (value < analysis.marketMin) {
+    return { label: 'Sotto mercato', tone: 'low' };
+  }
+
+  const distance =
+    Math.abs(value - analysis.democraticPrice) /
+    Math.max(1, analysis.democraticPrice);
+
+  if (distance <= 0.05) {
+    return { label: 'In linea', tone: 'ok' };
+  }
+
+  return { label: 'In fascia', tone: 'range' };
+}
+
 export default function ArvePricingModal({
   analysis,
   busy = false,
@@ -47,6 +67,7 @@ export default function ArvePricingModal({
         <ArveBadge
           sourceType={analysis.sourceType}
           matches={analysis.privateMatchesCount}
+          marketReferences={analysis.marketReferenceMatchesCount}
         />
 
         <div className="arve-price-list">
@@ -73,6 +94,31 @@ export default function ArvePricingModal({
           />
         </div>
 
+        <div className="arve-original-prices">
+          <div className="arve-original-prices__title">
+            <strong>I prezzi che hai inserito</strong>
+            <span>Confronto con la fascia ARVE</span>
+          </div>
+          {[
+            ['Prezzo 1', analysis.originalOfferPrice1],
+            ['Prezzo 2', analysis.originalOfferPrice2],
+            ['Prezzo 3', analysis.originalOfferPrice3],
+          ].map(([label, rawValue]) => {
+            const value = Number(rawValue);
+            const position = pricePosition(value, analysis);
+
+            return (
+              <div className="arve-original-price-row" key={String(label)}>
+                <span>{label}</span>
+                <strong>{formatEuro(value)}</strong>
+                <em className={`arve-price-position arve-price-position--${position.tone}`}>
+                  {position.label}
+                </em>
+              </div>
+            );
+          })}
+        </div>
+
         <div className="arve-explanation">
           <p>{analysis.message}</p>
           <div className="arve-metrics">
@@ -84,6 +130,9 @@ export default function ArvePricingModal({
             </span>
             <span>
               Livello prove <strong>{analysis.evidenceLevel}/4</strong>
+            </span>
+            <span>
+              Qualità base prezzi <strong>{Math.round((analysis.marketReferenceQuality || 0) * 100)}%</strong>
             </span>
           </div>
         </div>

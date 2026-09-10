@@ -56,6 +56,12 @@ type Car = {
   owner?: {
     clerkId: string;
   };
+  sellerType?: "PRIVATE" | "DEALER";
+  dealer?: {
+    id: string;
+    name: string;
+    logoUrl?: string | null;
+  } | null;
 };
 
 type AlternativeCar = {
@@ -483,6 +489,30 @@ export default function CarDetail() {
         <p className="muted">
           {currentCar.trimLevel ? currentCar.trimLevel : "—"}
         </p>
+
+        {currentCar.dealer && (
+          <Link
+            to={`/dealers/${currentCar.dealer.id}`}
+            className="car-dealer-link"
+            title={`Visita il garage di ${currentCar.dealer.name}`}
+          >
+            <div className="car-dealer-link-logo">
+              {currentCar.dealer.logoUrl ? (
+                <img
+                  src={currentCar.dealer.logoUrl}
+                  alt={`Logo ${currentCar.dealer.name}`}
+                />
+              ) : (
+                <span>{currentCar.dealer.name.slice(0, 2).toUpperCase()}</span>
+              )}
+            </div>
+            <div className="car-dealer-link-copy">
+              <span>Venduta da concessionario</span>
+              <strong>{currentCar.dealer.name}</strong>
+            </div>
+            <span className="car-dealer-link-action">Visita garage →</span>
+          </Link>
+        )}
 
         {isSold && (
           <div

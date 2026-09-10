@@ -1,6 +1,7 @@
 // backend/src/lib/carSaleLifecycle.ts
 
 import { PrismaClient, CarMarketStatus } from "@prisma/client";
+import { safeRecordArveMarketObservation } from "../services/arve/marketObservationService";
 
 export const SOLD_CAR_REMOVAL_DAYS = 5;
 
@@ -11,7 +12,11 @@ export function getSoldCarRemovalDate(fromDate = new Date()) {
 }
 
 export function isCarAvailable(car: any) {
-  return car?.marketStatus === CarMarketStatus.AVAILABLE && !car?.visuallyRemovedAt;
+  return (
+    car?.marketStatus === CarMarketStatus.AVAILABLE &&
+    !car?.visuallyRemovedAt &&
+    !car?.dealerPlanSuspended
+  );
 }
 
 export function isCarSoldPendingRemoval(car: any) {
@@ -44,6 +49,10 @@ export function getCarSaleStatus(car: any) {
     return "SOLD_PENDING_REMOVAL";
   }
 
+  if (car?.dealerPlanSuspended) {
+    return "DEALER_PLAN_SUSPENDED";
+  }
+
   return "AVAILABLE";
 }
 
@@ -55,6 +64,7 @@ export function getAvailableCarWhere() {
     },
     soldAt: null,
     visuallyRemovedAt: null,
+    dealerPlanSuspended: false,
   };
 }
 
@@ -87,6 +97,16 @@ export async function markCarAsSoldPendingRemoval(params: {
         id: true,
         createdAt: true,
         salePriceEur: true,
+        make: true,
+        model: true,
+        year: true,
+        mileageKm: true,
+        fuelType: true,
+        transmission: true,
+        trimLevel: true,
+        offerPrice1: true,
+        offerPrice2: true,
+        offerPrice3: true,
       },
     }),
     params.paymentId
@@ -139,6 +159,19 @@ export async function markCarAsSoldPendingRemoval(params: {
       data: {
         actualSoldPriceEur,
         actualSoldAt: soldAt,
+        daysToSell,
+      },
+    });
+
+    await safeRecordArveMarketObservation(params.prisma, {
+      type: "REAL_SALE",
+      externalKey: `sale:${params.carId}`,
+      car: carBeforeSale,
+      amountEur: actualSoldPriceEur,
+      occurredAt: soldAt,
+      metadata: {
+        paymentId: params.paymentId ?? null,
+        saleHistoryId: params.saleHistoryId ?? null,
         daysToSell,
       },
     });
@@ -230,6 +263,7 @@ export function buildCarAvailabilityResponse(params: {
       soldAt: car.soldAt,
       removalScheduledAt: car.removalScheduledAt,
       visuallyRemovedAt: car.visuallyRemovedAt,
+      dealerPlanSuspended: !!car.dealerPlanSuspended,
     },
     alternatives,
   };

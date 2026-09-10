@@ -1,7 +1,16 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@clerk/clerk-react";
 import { useNavigate, useParams } from "react-router-dom";
 import { http } from "../api";
+
+type InspectionRating = {
+  id: number;
+  pointKey: string;
+  pointLabel: string;
+  category: string;
+  score: number;
+  note?: string | null;
+};
 
 type ReportDetail = {
   id: number;
@@ -21,7 +30,9 @@ type ReportDetail = {
   testDriveNotes?: string | null;
   defectsFound?: string | null;
   finalOpinion?: string | null;
+  valuationOpinion?: string | null;
   estimatedValue?: number | null;
+  ratings?: InspectionRating[];
   createdAt: string;
   updatedAt: string;
   car?: {
@@ -47,46 +58,38 @@ type ReportDetail = {
   };
 };
 
-function InfoRow({
-  label,
-  value,
-}: {
-  label: string;
-  value?: string | number | null;
-}) {
+const CATEGORY_LABELS: Record<string, string> = {
+  BODYWORK: "Carrozzeria",
+  INTERIOR: "Interni",
+  ENGINE: "Motore",
+  MECHANICS: "Meccanica",
+  TIRES: "Pneumatici",
+  ELECTRONICS: "Elettronica",
+  TEST_DRIVE: "Test drive",
+};
+
+const SCORE_LABELS: Record<number, string> = {
+  1: "Da buttare",
+  2: "Danneggiato",
+  3: "Normale",
+  4: "Buone condizioni",
+  5: "Come nuovo",
+};
+
+function InfoRow({ label, value }: { label: string; value?: string | number | null }) {
   return (
-    <div
-      style={{
-        padding: "10px 0",
-        borderBottom: "1px solid rgba(255,255,255,0.08)",
-      }}
-    >
-      <div style={{ fontSize: 13, opacity: 0.7 }}>{label}</div>
-      <div style={{ marginTop: 4, fontWeight: 600 }}>{value ?? "-"}</div>
+    <div className="inspection-detail-info-row">
+      <span>{label}</span>
+      <strong>{value ?? "-"}</strong>
     </div>
   );
 }
 
-function NoteBlock({
-  title,
-  value,
-}: {
-  title: string;
-  value?: string | null;
-}) {
+function NoteBlock({ title, value }: { title: string; value?: string | null }) {
   return (
-    <div
-      style={{
-        border: "1px solid rgba(255,255,255,0.1)",
-        borderRadius: 12,
-        padding: 14,
-        background: "rgba(255,255,255,0.03)",
-      }}
-    >
-      <div style={{ fontWeight: 700, marginBottom: 8 }}>{title}</div>
-      <div style={{ whiteSpace: "pre-wrap", lineHeight: 1.5, opacity: 0.92 }}>
-        {value?.trim() ? value : "-"}
-      </div>
+    <div className="inspection-detail-note">
+      <strong>{title}</strong>
+      <div>{value?.trim() ? value : "-"}</div>
     </div>
   );
 }
@@ -95,7 +98,6 @@ export default function InspectorReportDetail() {
   const { id } = useParams();
   const { getToken } = useAuth();
   const navigate = useNavigate();
-
   const [loading, setLoading] = useState(true);
   const [report, setReport] = useState<ReportDetail | null>(null);
 
@@ -112,18 +114,15 @@ export default function InspectorReportDetail() {
         headers,
         responseType: "blob",
       });
-
       const blob = new Blob([response.data], { type: "application/pdf" });
-      const url = window.URL.createObjectURL(blob);
-
+      const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
       a.download = `resoconto-${id}.pdf`;
       document.body.appendChild(a);
       a.click();
       a.remove();
-
-      window.URL.revokeObjectURL(url);
+      URL.revokeObjectURL(url);
     } catch (e: any) {
       alert(e?.response?.data?.error ?? e?.message ?? "Errore download PDF");
     }
@@ -145,135 +144,97 @@ export default function InspectorReportDetail() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
-  if (loading) return <div style={{ paddingTop: 18 }}>Caricamento...</div>;
-  if (!report) return <div style={{ paddingTop: 18 }}>Resoconto non trovato.</div>;
+  const groupedRatings = useMemo(() => {
+    const groups: Record<string, InspectionRating[]> = {};
+    for (const rating of report?.ratings || []) {
+      (groups[rating.category] ||= []).push(rating);
+    }
+    return groups;
+  }, [report]);
+
+  if (loading) return <div className="container">Caricamento…</div>;
+  if (!report) return <div className="container">Resoconto non trovato.</div>;
+
+  const hasVisualRatings = (report.ratings?.length || 0) > 0;
 
   return (
-    <div style={{ paddingTop: 18, paddingBottom: 24 }}>
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          gap: 12,
-          alignItems: "center",
-          flexWrap: "wrap",
-        }}
-      >
+    <div className="inspection-detail-page">
+      <div className="inspection-report-heading">
         <div>
+          <span className="dealer-profile-kicker">PERIZIA #{report.id}</span>
           <h1>{report.title || "Resoconto perizia"}</h1>
-          <p style={{ opacity: 0.8 }}>
-            Auto: {report.car?.make} {report.car?.model} ({report.car?.year})
-          </p>
+          <p className="muted">{report.car?.make} {report.car?.model} ({report.car?.year})</p>
         </div>
-
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          <button className="btn secondary" onClick={() => navigate("/inspector/report")}>
-            Torna all'archivio
-          </button>
-          <button className="btn" onClick={downloadPdf}>
-            Scarica PDF
-          </button>
+        <div className="inspection-form-actions">
+          <button className="btn secondary" onClick={() => navigate("/inspector/report")}>Torna all'archivio</button>
+          <button className="btn" onClick={downloadPdf}>Scarica PDF</button>
         </div>
       </div>
 
-      <div
-        style={{
-          marginTop: 18,
-          border: "1px solid rgba(255,255,255,0.1)",
-          borderRadius: 16,
-          overflow: "hidden",
-          background: "rgba(255,255,255,0.03)",
-        }}
-      >
-        {report.car?.coverUrl ? (
-          <img
-            src={report.car.coverUrl}
-            alt=""
-            style={{
-              width: "100%",
-              maxHeight: 340,
-              objectFit: "cover",
-              display: "block",
-            }}
-          />
-        ) : null}
-
-        <div style={{ padding: 18 }}>
-          <div
-            style={{
-              display: "grid",
-              gap: 18,
-              gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-            }}
-          >
+      <section className="card inspection-detail-card">
+        {report.car?.coverUrl && <img src={report.car.coverUrl} alt="Auto periziata" className="inspection-detail-cover" />}
+        <div className="card-body">
+          <div className="inspection-detail-meta-grid">
             <div>
               <InfoRow label="Esito generale" value={report.overallStatus} />
               <InfoRow label="Targa" value={report.plate} />
               <InfoRow label="VIN" value={report.vin} />
               <InfoRow label="KM" value={report.km} />
-              <InfoRow
-                label="Data perizia"
-                value={
-                  report.inspectionDate
-                    ? new Date(report.inspectionDate).toLocaleString("it-IT")
-                    : "-"
-                }
-              />
+              <InfoRow label="Data perizia" value={report.inspectionDate ? new Date(report.inspectionDate).toLocaleString("it-IT") : "-"} />
               <InfoRow label="Luogo" value={report.location} />
-              <InfoRow
-                label="Valore stimato"
-                value={
-                  report.estimatedValue != null
-                    ? `${report.estimatedValue} €`
-                    : "-"
-                }
-              />
+              <InfoRow label="Valore stimato" value={report.estimatedValue != null ? `${report.estimatedValue} €` : "-"} />
             </div>
-
             <div>
               <InfoRow label="Periziatore" value={report.inspectorUser?.name || "-"} />
               <InfoRow label="Email periziatore" value={report.inspectorUser?.email || "-"} />
-              <InfoRow label="Auto" value={`${report.car?.make} ${report.car?.model}`} />
+              <InfoRow label="Auto" value={`${report.car?.make ?? ""} ${report.car?.model ?? ""}`} />
               <InfoRow label="Anno" value={report.car?.year} />
               <InfoRow label="Città auto" value={report.car?.city || "-"} />
-              <InfoRow
-                label="Finestra appuntamento"
-                value={
-                  report.inspectionRequest
-                    ? `${new Date(report.inspectionRequest.startAt).toLocaleString("it-IT")} → ${new Date(report.inspectionRequest.endAt).toLocaleString("it-IT")}`
-                    : "-"
-                }
-              />
-              <InfoRow
-                label="Creato il"
-                value={new Date(report.createdAt).toLocaleString("it-IT")}
-              />
+              <InfoRow label="Creato il" value={new Date(report.createdAt).toLocaleString("it-IT")} />
             </div>
           </div>
 
-          <div
-            style={{
-              display: "grid",
-              gap: 14,
-              marginTop: 22,
-              gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
-            }}
-          >
-            <NoteBlock title="Carrozzeria" value={report.bodyworkNotes} />
-            <NoteBlock title="Interni" value={report.interiorNotes} />
-            <NoteBlock title="Motore" value={report.engineNotes} />
-            <NoteBlock title="Meccanica" value={report.mechanicsNotes} />
-            <NoteBlock title="Pneumatici" value={report.tiresNotes} />
-            <NoteBlock title="Elettronica" value={report.electronicsNotes} />
-            <NoteBlock title="Test drive" value={report.testDriveNotes} />
-            <NoteBlock title="Difetti riscontrati" value={report.defectsFound} />
-          </div>
+          {hasVisualRatings ? (
+            <div className="inspection-detail-ratings">
+              <h2>Valutazione visuale</h2>
+              <div className="inspection-detail-category-grid">
+                {Object.entries(CATEGORY_LABELS).map(([category, label]) => {
+                  const items = groupedRatings[category] || [];
+                  if (!items.length) return null;
+                  const average = Math.round((items.reduce((sum, item) => sum + item.score, 0) / items.length) * 10) / 10;
+                  return (
+                    <article className="inspection-detail-category" key={category}>
+                      <div className="inspection-detail-category-head"><strong>{label}</strong><span>{average}/5</span></div>
+                      {items.map((item) => (
+                        <div className="inspection-detail-rating-row" key={item.id}>
+                          <div><strong>{item.pointLabel}</strong><span>{item.score}/5 · {SCORE_LABELS[item.score]}</span></div>
+                          {item.note && <p>{item.note}</p>}
+                        </div>
+                      ))}
+                    </article>
+                  );
+                })}
+              </div>
+            </div>
+          ) : (
+            <div className="inspection-detail-legacy-grid">
+              <NoteBlock title="Carrozzeria" value={report.bodyworkNotes} />
+              <NoteBlock title="Interni" value={report.interiorNotes} />
+              <NoteBlock title="Motore" value={report.engineNotes} />
+              <NoteBlock title="Meccanica" value={report.mechanicsNotes} />
+              <NoteBlock title="Pneumatici" value={report.tiresNotes} />
+              <NoteBlock title="Elettronica" value={report.electronicsNotes} />
+              <NoteBlock title="Test drive" value={report.testDriveNotes} />
+              <NoteBlock title="Difetti riscontrati" value={report.defectsFound} />
+            </div>
+          )}
 
-          <div style={{ marginTop: 18 }}>
+          <div className="inspection-detail-opinions">
             <NoteBlock title="Parere finale" value={report.finalOpinion} />
+            {report.valuationOpinion && <NoteBlock title="Parere sulla valutazione dell'auto" value={report.valuationOpinion} />}
           </div>
         </div>
-      </div>
+      </section>
     </div>
   );
 }

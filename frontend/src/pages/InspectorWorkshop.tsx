@@ -1,5 +1,6 @@
 // frontend/src/pages/InspectorWorkshop.tsx
 import React, { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { useAuth } from "@clerk/clerk-react";
 import { http } from "../api";
 import AscariPopup from "../components/AscariPopup";
@@ -13,6 +14,7 @@ type InspectorProfile = {
   id: string;
   workshopName: string;
   workshopAddress?: string | null;
+  logoUrl?: string | null;
   email: string;
   phone: string;
   city?: string | null;
@@ -36,6 +38,8 @@ type InspectionRequest = {
   status: "PENDING" | "ASSIGNED" | "SEEN" | "CONFIRMED" | "DONE" | "CANCELLED";
   car?: { title?: string | null; make?: string | null; model?: string | null };
 };
+
+type AvailabilityMode = "hour" | "day" | "multi";
 
 type PopupState = {
   open: boolean;
@@ -92,6 +96,7 @@ export default function InspectorWorkshop() {
 
   const [workshopName, setWorkshopName] = useState("");
   const [workshopAddress, setWorkshopAddress] = useState("");
+  const [logoUrl, setLogoUrl] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [city, setCity] = useState("");
@@ -104,6 +109,8 @@ export default function InspectorWorkshop() {
   const [selectedDay, setSelectedDay] = useState<Date | null>(null);
   const [modalStart, setModalStart] = useState("09:00");
   const [modalEnd, setModalEnd] = useState("10:00");
+  const [multiEndDay, setMultiEndDay] = useState("");
+  const [availabilityMode, setAvailabilityMode] = useState<AvailabilityMode>("hour");
   const [slotModalError, setSlotModalError] = useState<string | null>(null);
 
   const [popup, setPopup] = useState<PopupState>({
@@ -194,6 +201,7 @@ export default function InspectorWorkshop() {
 
         setWorkshopName(p.workshopName ?? "");
         setWorkshopAddress(p.workshopAddress ?? "");
+        setLogoUrl(p.logoUrl ?? "");
         setEmail(p.email ?? "");
         setPhone(p.phone ?? "");
         setCity((p.city ?? "") as string);
@@ -224,6 +232,23 @@ export default function InspectorWorkshop() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  function handleLogoFile(file?: File | null) {
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      openErrorPopup("Seleziona un file immagine valido.", "Logo non valido");
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      openErrorPopup("Il logo non può superare 5 MB.", "Logo troppo grande");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => setLogoUrl(String(reader.result ?? ""));
+    reader.onerror = () => openErrorPopup("Impossibile leggere il file selezionato.");
+    reader.readAsDataURL(file);
+  }
+
   async function saveProfile() {
     setErr(null);
     setSaving(true);
@@ -241,6 +266,7 @@ export default function InspectorWorkshop() {
       const payload = {
         workshopName,
         workshopAddress: workshopAddress || null,
+        logoUrl: logoUrl || null,
         email,
         phone,
         city: city || null,
@@ -310,44 +336,104 @@ export default function InspectorWorkshop() {
 
     try {
       const headers = await authHeaders();
-
-      const [sh, sm] = modalStart.split(":").map(Number);
-      const [eh, em] = modalEnd.split(":").map(Number);
-
-      const start = new Date(selectedDay);
-      start.setHours(sh, sm, 0, 0);
-
-      const end = new Date(selectedDay);
-      end.setHours(eh, em, 0, 0);
-
-      if (end <= start) {
-        setSlotModalError("L'orario di fine deve essere maggiore dell'inizio.");
-        return;
-      }
-
       const ws = hhmmToMinutes(workStart);
       const we = hhmmToMinutes(workEnd);
-      const startMin = hhmmToMinutes(modalStart);
-      const endMin = hhmmToMinutes(modalEnd);
 
-      if (startMin < ws || endMin > we) {
-        setSlotModalError(`Lo slot deve essere tra ${workStart} e ${workEnd}.`);
+      if (we <= ws) {
+        setSlotModalError("Controlla prima l'orario di apertura e chiusura dell'officina.");
         return;
       }
 
-      const { data } = await http.post(
-        "/inspector/slots",
-        { startAt: start.toISOString(), endAt: end.toISOString() },
-        { headers }
-      );
+      const makeRange = (day: Date, startHHMM: string, endHHMM: string) => {
+        const [sh, sm] = startHHMM.split(":").map(Number);
+        const [eh, em] = endHHMM.split(":").map(Number);
+        const start = new Date(day);
+        const end = new Date(day);
+        start.setHours(sh, sm, 0, 0);
+        end.setHours(eh, em, 0, 0);
+        return { startAt: start.toISOString(), endAt: end.toISOString() };
+      };
 
-      if (!data?.ok) throw new Error("Creazione slot fallita");
+      let ranges: Array<{ startAt: string; endAt: string }> = [];
+
+      if (availabilityMode === "hour") {
+        const startMin = hhmmToMinutes(modalStart);
+        const endMin = hhmmToMinutes(modalEnd);
+        if (endMin <= startMin) {
+          setSlotModalError("L'orario di fine deve essere maggiore dell'inizio.");
+          return;
+        }
+        if (startMin < ws || endMin > we) {
+          setSlotModalError(`Lo slot deve essere tra ${workStart} e ${workEnd}.`);
+          return;
+        }
+        ranges = [makeRange(selectedDay, modalStart, modalEnd)];
+      }else if (availabilityMode === "day") {
+            ranges = [makeRange(selectedDay, workStart, workEnd)];
+          } else if (availabilityMode === "multi") {
+            if (!multiEndDay) {
+              setSlotModalError("Seleziona il giorno finale.");
+              return;
+            }
+
+            const startDay = new Date(selectedDay);
+            startDay.setHours(0, 0, 0, 0);
+
+            const [year, month, day] = multiEndDay.split("-").map(Number);
+
+            const endDay = new Date(year, month - 1, day);
+            endDay.setHours(0, 0, 0, 0);
+
+            if (endDay < startDay) {
+              setSlotModalError(
+                "Il giorno finale non può essere precedente al giorno iniziale."
+              );
+              return;
+            }
+
+            const diffDays =
+              Math.floor(
+                (endDay.getTime() - startDay.getTime()) /
+                  (1000 * 60 * 60 * 24)
+              ) + 1;
+
+            if (diffDays > 7) {
+              setSlotModalError(
+                "Puoi inserire al massimo 7 giorni consecutivi."
+              );
+              return;
+            }
+
+            ranges = Array.from({ length: diffDays }, (_, index) => {
+              const current = new Date(startDay);
+              current.setDate(startDay.getDate() + index);
+
+              return makeRange(
+                current,
+                workStart,
+                workEnd
+              );
+            });
+          }
+
+      const { data } = ranges.length === 1
+        ? await http.post("/inspector/slots", ranges[0], { headers })
+        : await http.post("/inspector/slots/bulk", { slots: ranges }, { headers });
+
+      if (!data?.ok) throw new Error("Creazione disponibilità fallita");
 
       setSlotModalOpen(false);
       setSelectedDay(null);
       setSlotModalError(null);
+      setAvailabilityMode("hour");
       await loadAll();
-      openSuccessPopup("Lo slot di disponibilità è stato creato correttamente.");
+
+      const message = availabilityMode === "multi"
+        ? "La settimana è stata impostata come disponibile negli orari di lavoro."
+        : availabilityMode === "day"
+          ? "La giornata è stata impostata come disponibile negli orari di lavoro."
+          : "Lo slot di disponibilità è stato creato correttamente.";
+      openSuccessPopup(message);
     } catch (e: any) {
       const msg = e?.response?.data?.error ?? e?.message ?? "Errore";
       setSlotModalError(msg);
@@ -442,6 +528,11 @@ export default function InspectorWorkshop() {
           </div>
 
           <div className="inspector-workshop-hero-card">
+            {logoUrl && (
+              <div className="inspector-workshop-hero-logo">
+                <img src={logoUrl} alt={`Logo ${workshopName || "officina"}`} />
+              </div>
+            )}
             <span>Stato profilo</span>
             <strong>{profile ? "Officina attiva" : "Profilo non configurato"}</strong>
             <p>
@@ -527,6 +618,36 @@ export default function InspectorWorkshop() {
                   placeholder="Es. Via Roma 10"
                 />
               </label>
+
+              <div className="inspector-workshop-field inspector-workshop-field-full">
+                <span>Logo officina / periziatore</span>
+                <div className="inspector-workshop-logo-editor">
+                  <div className="inspector-workshop-logo-preview">
+                    {logoUrl ? (
+                      <img src={logoUrl} alt="Anteprima logo officina" />
+                    ) : (
+                      <span>{(workshopName || "A").slice(0, 1).toUpperCase()}</span>
+                    )}
+                  </div>
+
+                  <div className="inspector-workshop-logo-controls">
+                    <label className="btn secondary inspector-workshop-logo-button">
+                      Scegli logo
+                      <input
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp,image/gif"
+                        onChange={(e) => handleLogoFile(e.target.files?.[0])}
+                      />
+                    </label>
+                    {logoUrl && (
+                      <button className="btn secondary" type="button" onClick={() => setLogoUrl("")}>
+                        Rimuovi
+                      </button>
+                    )}
+                    <small>PNG, JPG o WebP. Massimo 5 MB.</small>
+                  </div>
+                </div>
+              </div>
 
               <label className="inspector-workshop-field">
                 <span>Email</span>
@@ -669,8 +790,9 @@ export default function InspectorWorkshop() {
               <span className="inspector-workshop-card-badge">CALENDARIO</span>
               <h2>Disponibilità officina</h2>
               <p>
-                Tocca un giorno per inserire uno slot. Tocca uno slot per rimuoverlo.
-                Gli appuntamenti confermati sono evidenziati con il colore scelto.
+                Tocca un giorno e scegli se renderti disponibile per una fascia oraria,
+                per l'intera giornata o per tutta la settimana. Le perizie occupano solo
+                l'orario prenotato, lasciando libero il resto della disponibilità.
               </p>
             </div>
 
@@ -698,7 +820,7 @@ export default function InspectorWorkshop() {
               buttonText={{
                 today: "Oggi",
                 month: "Mese",
-                week: "Settimana",
+                multi: "Giorni",
                 day: "Giorno",
               }}
               height="auto"
@@ -707,6 +829,11 @@ export default function InspectorWorkshop() {
                 setErr(null);
                 setSlotModalError(null);
                 setSelectedDay(info.date);
+                const yyyy = info.date.getFullYear();
+                const mm = String(info.date.getMonth() + 1).padStart(2, "0");
+                const dd = String(info.date.getDate()).padStart(2, "0");
+
+                setMultiEndDay(`${yyyy}-${mm}-${dd}`);
 
                 const ws = workStart;
                 const wsMin = hhmmToMinutes(ws);
@@ -714,6 +841,7 @@ export default function InspectorWorkshop() {
 
                 setModalStart(ws);
                 setModalEnd(minutesToHHMM(Math.min(wsMin + 60, weMin)));
+                setAvailabilityMode("hour");
 
                 setSlotModalOpen(true);
               }}
@@ -723,7 +851,8 @@ export default function InspectorWorkshop() {
                 if (kind !== "SLOT") return;
 
                 const slotId = Number(clickInfo.event.extendedProps?.slotId);
-                if (!slotId) return;
+                const isAvailable = Boolean(clickInfo.event.extendedProps?.isAvailable);
+                if (!slotId || !isAvailable) return;
 
                 openConfirmPopup({
                   title: "Rimuovere questo slot?",
@@ -740,13 +869,13 @@ export default function InspectorWorkshop() {
           <div className="inspector-workshop-tip">
             <strong>Suggerimento</strong>
             <span>
-              Per una gestione più precisa usa la vista “Settimana” o “Giorno” quando inserisci
-              fasce orarie molto specifiche.
+              Puoi creare una disponibilità ampia: quando viene prenotata una perizia, Ascari
+              mantiene automaticamente disponibili le fasce prima e dopo l'appuntamento.
             </span>
           </div>
         </section>
 
-        {slotModalOpen && (
+        {slotModalOpen && createPortal(
           <div className="modal-backdrop inspector-workshop-modal-backdrop" role="dialog" aria-modal="true">
             <div className="modal-card inspector-workshop-modal-card">
               <div className="modal-title inspector-workshop-modal-title">
@@ -774,27 +903,115 @@ export default function InspectorWorkshop() {
                 <strong>{selectedDay ? selectedDay.toLocaleDateString("it-IT") : ""}</strong>
               </div>
 
-              <div className="modal-grid inspector-workshop-modal-grid">
-                <label className="inspector-workshop-field">
-                  <span>Inizio</span>
-                  <input
-                    className="input inspector-workshop-input"
-                    type="time"
-                    value={modalStart}
-                    onChange={(e) => setModalStart(e.target.value)}
-                  />
-                </label>
-
-                <label className="inspector-workshop-field">
-                  <span>Fine</span>
-                  <input
-                    className="input inspector-workshop-input"
-                    type="time"
-                    value={modalEnd}
-                    onChange={(e) => setModalEnd(e.target.value)}
-                  />
-                </label>
+              <div className="inspector-workshop-availability-modes" role="group" aria-label="Modalità disponibilità">
+                <button
+                  type="button"
+                  className={availabilityMode === "hour" ? "active" : ""}
+                  onClick={() => setAvailabilityMode("hour")}
+                >
+                  Fascia oraria
+                </button>
+                <button
+                  type="button"
+                  className={availabilityMode === "day" ? "active" : ""}
+                  onClick={() => setAvailabilityMode("day")}
+                >
+                  Giorno intero
+                </button>
+                <button
+                  type="button"
+                  className={availabilityMode === "multi" ? "active" : ""}
+                  onClick={() => setAvailabilityMode("multi")}
+                >
+                  Più giorni
+                </button>
               </div>
+
+              {availabilityMode === "hour" ? (
+                <div className="modal-grid inspector-workshop-modal-grid">
+                  <label className="inspector-workshop-field">
+                    <span>Inizio</span>
+                    <input
+                      className="input inspector-workshop-input"
+                      type="time"
+                      value={modalStart}
+                      onChange={(e) => setModalStart(e.target.value)}
+                    />
+                  </label>
+
+                  <label className="inspector-workshop-field">
+                    <span>Fine</span>
+                    <input
+                      className="input inspector-workshop-input"
+                      type="time"
+                      value={modalEnd}
+                      onChange={(e) => setModalEnd(e.target.value)}
+                    />
+                  </label>
+                </div>
+              ) : availabilityMode === "day" ? (
+                <div className="inspector-workshop-mode-summary">
+                  <strong>Disponibile tutto il giorno</strong>
+
+                  <span>
+                    {workStart} - {workEnd}
+                  </span>
+
+                  <small>
+                    Le perizie confermate verranno sottratte automaticamente
+                    da questa disponibilità.
+                  </small>
+                </div>
+              ) : (
+                <div className="inspector-workshop-mode-summary">
+
+                  <strong>Disponibilità per più giorni</strong>
+
+                  <div className="modal-grid inspector-workshop-modal-grid">
+
+                    <label className="inspector-workshop-field">
+                      <span>Da</span>
+
+                      <input
+                        className="input inspector-workshop-input"
+                        type="date"
+                        value={
+                          selectedDay
+                            ? `${selectedDay.getFullYear()}-${String(
+                                selectedDay.getMonth() + 1
+                              ).padStart(2, "0")}-${String(
+                                selectedDay.getDate()
+                              ).padStart(2, "0")}`
+                            : ""
+                        }
+                        disabled
+                      />
+                    </label>
+
+                    <label className="inspector-workshop-field">
+                      <span>A</span>
+
+                      <input
+                        className="input inspector-workshop-input"
+                        type="date"
+                        value={multiEndDay}
+                        onChange={(e) => setMultiEndDay(e.target.value)}
+                      />
+                    </label>
+
+                  </div>
+
+                  <span>
+                    Orario: {workStart} - {workEnd}
+                  </span>
+
+                  <small>
+                    Le perizie confermate verranno sottratte automaticamente
+                    dalla disponibilità dei singoli giorni.
+                  </small>
+
+                </div>
+              )}
 
               {slotModalError && (
                 <div className="inspector-workshop-modal-error">{slotModalError}</div>
@@ -802,7 +1019,7 @@ export default function InspectorWorkshop() {
 
               <div className="modal-actions inspector-workshop-modal-actions">
                 <button className="btn" type="button" onClick={createSlotFromModal}>
-                  Salva slot
+                  {availabilityMode === "hour" ? "Salva slot" : availabilityMode === "day" ? "Salva giornata" : "Salva settimana"}
                 </button>
 
                 <button
@@ -819,7 +1036,8 @@ export default function InspectorWorkshop() {
                 </button>
               </div>
             </div>
-          </div>
+          </div>,
+          document.body
         )}
       </main>
 

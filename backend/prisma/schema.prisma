@@ -20,6 +20,23 @@ enum CashoutStatus {
   CANCELLED
 }
 
+enum DealerPlan {
+  STARTER
+  ADVANCED
+}
+
+enum DealerSubscriptionStatus {
+  INACTIVE
+  INCOMPLETE
+  INCOMPLETE_EXPIRED
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  UNPAID
+  CANCELED
+  PAUSED
+}
+
 model User {
   id        String   @id @default(cuid())
   clerkId   String   @unique
@@ -47,6 +64,7 @@ model User {
   sellerChats Chat[] @relation("SellerChats")
 
   inspectorProfile InspectorProfile?
+  dealerProfile    DealerProfile?
 
   sellerInspectionRequests InspectionRequest[] @relation("SellerInspectionRequests")
   inspectionReports        InspectionReport[]
@@ -57,6 +75,108 @@ model User {
 
   buyerSaleHistories  SaleHistory[] @relation("BuyerSaleHistories")
   sellerSaleHistories SaleHistory[] @relation("SellerSaleHistories")
+
+  dealerReviews DealerReview[] @relation("DealerReviewAuthor")
+}
+
+model DealerProfile {
+  id     String @id @default(cuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  dealerName   String
+  businessName String?
+  vatNumber    String?
+  description  String?
+  logoUrl      String?
+
+  address  String
+  city     String
+  province String?
+  country  String? @default("Italia")
+
+  email   String
+  phone   String
+  website String?
+
+  latitude  Float?
+  longitude Float?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  subscription DealerSubscription?
+  devices      DealerDevice[]
+  reviews      DealerReview[]
+
+  @@index([city])
+  @@index([latitude, longitude])
+}
+
+model DealerSubscription {
+  id String @id @default(cuid())
+
+  dealerProfileId String        @unique
+  dealerProfile   DealerProfile @relation(fields: [dealerProfileId], references: [id], onDelete: Cascade)
+
+  plan   DealerPlan               @default(STARTER)
+  status DealerSubscriptionStatus @default(INACTIVE)
+
+  stripeCustomerId     String? @unique
+  stripeSubscriptionId String? @unique
+  stripePriceId        String?
+
+  currentPeriodStart DateTime?
+  currentPeriodEnd   DateTime?
+  cancelAtPeriodEnd  Boolean   @default(false)
+  cancelAt           DateTime?
+  canceledAt         DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([plan, status])
+  @@index([stripePriceId])
+}
+
+model DealerDevice {
+  id String @id @default(cuid())
+
+  dealerProfileId String
+  dealerProfile   DealerProfile @relation(fields: [dealerProfileId], references: [id], onDelete: Cascade)
+
+  deviceId  String
+  label     String?
+  userAgent String?
+  lastSeenAt DateTime @default(now())
+  revokedAt  DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([dealerProfileId, deviceId])
+  @@index([dealerProfileId, revokedAt])
+  @@index([lastSeenAt])
+}
+
+model DealerReview {
+  id Int @id @default(autoincrement())
+
+  dealerProfileId String
+  dealerProfile   DealerProfile @relation(fields: [dealerProfileId], references: [id], onDelete: Cascade)
+
+  authorId String
+  author   User @relation("DealerReviewAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+
+  rating  Int
+  comment String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([dealerProfileId, authorId])
+  @@index([dealerProfileId, createdAt])
+  @@index([rating])
 }
 
 model InspectorProfile {
@@ -66,6 +186,7 @@ model InspectorProfile {
 
   workshopName    String
   workshopAddress String?
+  logoUrl         String?
   email           String
   phone           String
 
@@ -182,12 +303,12 @@ model Car {
   paymentStatus       String    @default("NOT_CONFIGURED")
   paymentConfiguredAt DateTime?
 
-  marketStatus            CarMarketStatus @default(AVAILABLE)
-  soldAt                  DateTime?
-  removalScheduledAt      DateTime?
-  visuallyRemovedAt       DateTime?
-  soldByPaymentId         Int?
-  soldBySaleHistoryId     Int?
+  marketStatus        CarMarketStatus @default(AVAILABLE)
+  soldAt              DateTime?
+  removalScheduledAt  DateTime?
+  visuallyRemovedAt   DateTime?
+  soldByPaymentId     Int?
+  soldBySaleHistoryId Int?
 
   payments Payment[]
 
@@ -218,7 +339,11 @@ model Car {
   qrCodeCreatedAt DateTime?
   qrScans         QrScan[]
 
-  arvePricingAnalysis ArvePricingAnalysis?
+  dealerPlanSuspended   Boolean   @default(false)
+  dealerPlanSuspendedAt DateTime?
+
+  arvePricingAnalysis    ArvePricingAnalysis?
+  arveMarketObservations ArveMarketObservation[]
 
   @@index([make, model])
   @@index([latitude, longitude])
@@ -252,18 +377,22 @@ model ArvePricingAnalysis {
   evidenceLevel  Int
 
   comparableItems     Json?
-  privateMatchesCount Int @default(0)
+  privateMatchesCount          Int   @default(0)
+  marketReferenceMatchesCount Int   @default(0)
+  marketReferenceQuality      Float @default(0)
+  marketReferenceMedian       Int?
+  marketReferenceItems        Json?
 
-  sourceType    String
-  modelUsed     String?
-  promptVersion String?
-  inputTokens   Int?
-  outputTokens  Int?
-  totalTokens   Int?
+  sourceType      String
+  modelUsed       String?
+  promptVersion   String?
+  inputTokens     Int?
+  outputTokens    Int?
+  totalTokens     Int?
   rawResponseJson Json?
   analysisError   String?
 
-  userDecision      String @default("PENDING")
+  userDecision       String    @default("PENDING")
   appliedOfferPrice1 Int?
   appliedOfferPrice2 Int?
   appliedOfferPrice3 Int?
@@ -280,6 +409,84 @@ model ArvePricingAnalysis {
   @@index([userDecision])
   @@index([actualSoldAt])
   @@index([createdAt])
+}
+
+enum ArveMarketDataQuality {
+  VERIFIED
+  AGGREGATED
+  MODEL_ESTIMATE
+  TO_VALIDATE
+}
+
+enum ArveMarketObservationType {
+  LISTING_CREATED
+  OFFER_RECEIVED
+  OFFER_ACCEPTED
+  REAL_SALE
+}
+
+model ArveMarketReference {
+  id Int @id @default(autoincrement())
+
+  make      String
+  model     String
+  trimLevel String?
+  fuelType  String
+
+  makeNormalized  String
+  modelNormalized String
+  fuelNormalized  String
+
+  referenceYear Int
+  kmMin         Int?
+  kmMax         Int?
+  priceMin      Int
+  priceMax      Int
+
+  quality     ArveMarketDataQuality
+  qualityNote String?
+
+  source        String   @default("ASCARI_ARVE_XLSX")
+  sourceVersion String
+  importedAt    DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([makeNormalized, modelNormalized, fuelNormalized, referenceYear, source], map: "ArveMarketReference_vehicle_year_source_key")
+  @@index([makeNormalized, modelNormalized, fuelNormalized], map: "ArveMarketReference_vehicle_idx")
+  @@index([referenceYear])
+  @@index([quality])
+  @@index([sourceVersion])
+}
+
+model ArveMarketObservation {
+  id Int @id @default(autoincrement())
+
+  carId Int?
+  car   Car? @relation(fields: [carId], references: [id], onDelete: SetNull)
+
+  type        ArveMarketObservationType
+  externalKey String @unique
+
+  make         String
+  model        String
+  year         Int
+  mileageKm    Int?
+  fuelType     String
+  transmission String?
+  trimLevel    String?
+
+  amountEur   Int?
+  offerPrice1 Int?
+  offerPrice2 Int?
+  offerPrice3 Int?
+
+  metadata   Json?
+  occurredAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+
+  @@index([make, model, year])
+  @@index([type, occurredAt])
+  @@index([carId, occurredAt])
 }
 
 model QrScan {
@@ -327,13 +534,36 @@ model InspectionReport {
   testDriveNotes   String?
   defectsFound     String?
   finalOpinion     String?
+  valuationOpinion String?
   estimatedValue   Int?
+
+  ratings InspectionRating[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([inspectorUserId, createdAt])
   @@index([carId])
+}
+
+model InspectionRating {
+  id Int @id @default(autoincrement())
+
+  reportId Int
+  report   InspectionReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  pointKey   String
+  pointLabel String
+  category   String
+  score      Int
+  note       String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([reportId, pointKey])
+  @@index([reportId, category])
+  @@index([score])
 }
 
 model InspectorCashout {
@@ -355,7 +585,7 @@ model InspectorCashout {
 
   failureReason String?
 
-  requestedAt DateTime @default(now())
+  requestedAt DateTime  @default(now())
   paidAt      DateTime?
   failedAt    DateTime?
 
@@ -448,11 +678,11 @@ model Payment {
   stripeTransferId       String?
   stripeApplicationFeeId String?
 
-  amountEur    Int
-  ascariFeeEur Int
+  amountEur        Int
+  ascariFeeEur     Int
   inspectionFeeEur Int?
-  sellerNetEur Int
-  currency     String @default("eur")
+  sellerNetEur     Int
+  currency         String @default("eur")
 
   status     String    @default("CREATED")
   paidAt     DateTime?
@@ -481,10 +711,10 @@ model SaleHistory {
 
   paymentId Int? @unique
 
-  amountEur    Int
-  ascariFeeEur Int?
+  amountEur        Int
+  ascariFeeEur     Int?
   inspectionFeeEur Int?
-  sellerNetEur Int?
+  sellerNetEur     Int?
 
   currency String @default("eur")
 

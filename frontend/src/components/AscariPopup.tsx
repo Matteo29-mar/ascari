@@ -135,8 +135,8 @@ export default function AscariPopup({
         style={{
           width: "100%",
           maxWidth,
-          background:
-            "linear-gradient(180deg, rgba(8,18,36,0.98) 0%, rgba(9,17,29,0.98) 100%)",
+          background:"var(--bg-card)",
+          color: "var(--text)",
           padding: "22px 22px 20px",
           borderRadius: 20,
           border: `1px solid ${palette.border}`,
@@ -158,9 +158,9 @@ export default function AscariPopup({
               width: 36,
               height: 36,
               borderRadius: 999,
-              border: "1px solid rgba(255,255,255,0.12)",
-              background: "rgba(255,255,255,0.04)",
-              color: "#fff",
+              border: "1px solid var(--panel-strong)",
+              background: "var(--panel)",
+              color: "var(--text)",
               cursor: loading ? "not-allowed" : "pointer",
               fontSize: 18,
               lineHeight: 1,
@@ -200,7 +200,7 @@ export default function AscariPopup({
           <div style={{ flex: 1 }}>
             <h3
               style={{
-                color: "#ffffff",
+                color: "var(--text)",
                 margin: 0,
                 fontSize: 24,
                 fontWeight: 800,
@@ -226,7 +226,7 @@ export default function AscariPopup({
         {message ? (
           <div
             style={{
-              color: "rgba(255,255,255,0.88)",
+              color: "var(--muted)",
               margin: 0,
               marginBottom: children ? 16 : 22,
               lineHeight: 1.65,

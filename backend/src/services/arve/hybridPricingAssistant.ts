@@ -7,6 +7,10 @@ import { normalizeAndValidateArveResult } from "./arvePricingValidator";
 import { localFallbackAnalysis } from "./localPricingFallback";
 import { analyzeWithOpenAI } from "./openAiPricingService";
 import { findPrivateDatasetMatches } from "./privateDatasetService";
+import {
+  findMarketReferenceMatches,
+  summarizeMarketReferences,
+} from "./marketReferenceService";
 
 export function buildArvePricingInputFromCar(car: any): ArvePricingInput {
   return {
@@ -60,6 +64,10 @@ async function persistAnalysis(
     evidenceLevel: result.evidenceLevel,
     comparableItems: result.comparableItems as any,
     privateMatchesCount: result.privateMatchesCount,
+    marketReferenceMatchesCount: result.marketReferenceMatchesCount,
+    marketReferenceQuality: result.marketReferenceQuality,
+    marketReferenceMedian: result.marketReferenceMedian,
+    marketReferenceItems: result.marketReferenceItems as any,
     sourceType: result.sourceType,
     modelUsed: result.modelUsed,
     promptVersion: result.promptVersion,
@@ -91,11 +99,10 @@ export async function analyzeHybridPrice(
   prisma: PrismaClient,
   input: ArvePricingInput
 ): Promise<ArvePricingResult> {
-  const privateMatches = await findPrivateDatasetMatches(
-    prisma,
-    input,
-    input.carId
-  );
+  const [privateMatches, marketReferences] = await Promise.all([
+    findPrivateDatasetMatches(prisma, input, input.carId),
+    findMarketReferenceMatches(prisma, input),
+  ]);
 
   let result: ArvePricingResult;
   let analysisError: string | null = null;
@@ -105,10 +112,19 @@ export async function analyzeHybridPrice(
 
   if (!arveEnabled) {
     analysisError = "ARVE disabilitato da configurazione";
-    result = localFallbackAnalysis(input, privateMatches, analysisError);
+    result = localFallbackAnalysis(
+      input,
+      privateMatches,
+      marketReferences,
+      analysisError
+    );
   } else {
     try {
-      result = await analyzeWithOpenAI({ input, privateMatches });
+      result = await analyzeWithOpenAI({
+        input,
+        privateMatches,
+        marketReferences,
+      });
       result = normalizeAndValidateArveResult(input, result);
     } catch (error) {
       analysisError = errorReason(error);
@@ -118,15 +134,25 @@ export async function analyzeHybridPrice(
       );
       result = normalizeAndValidateArveResult(
         input,
-        localFallbackAnalysis(input, privateMatches, analysisError)
+        localFallbackAnalysis(
+          input,
+          privateMatches,
+          marketReferences,
+          analysisError
+        )
       );
     }
   }
 
   await persistAnalysis(prisma, input, result, analysisError);
 
+  const marketSummary = summarizeMarketReferences(marketReferences);
   console.log(
-    `[ARVE] carId=${input.carId} source=${result.sourceType} matches=${result.privateMatchesCount} model=${result.modelUsed || "local"} tokens=${result.totalTokens ?? 0} confidence=${result.confidence.toFixed(2)}`
+    `[ARVE] carId=${input.carId} source=${result.sourceType} privateMatches=${result.privateMatchesCount} marketRefs=${result.marketReferenceMatchesCount} marketQuality=${Math.round(
+      marketSummary.quality * 100
+    )}% model=${result.modelUsed || "local"} tokens=${
+      result.totalTokens ?? 0
+    } confidence=${result.confidence.toFixed(2)}`
   );
 
   return result;

@@ -64,16 +64,31 @@ function publicAnalysis(analysis: any) {
 /**
  * GET /api/arve/health
  */
-router.get("/health", (_req, res) => {
-  return res.json({
-    ok: true,
-    enabled: String(process.env.ARVE_ENABLED || "true").toLowerCase() !== "false",
-    openAiConfigured: Boolean(process.env.OPENAI_API_KEY?.trim()),
-    model: process.env.OPENAI_MODEL || "gpt-5-mini",
-    promptVersion: process.env.ARVE_PROMPT_VERSION || "ascari-arve-v1",
-    visionEnabled:
-      String(process.env.OPENAI_VISION_ENABLED || "true").toLowerCase() !== "false",
-  });
+router.get("/health", async (_req, res) => {
+  try {
+    const [marketReferences, marketObservations] = await Promise.all([
+      prisma.arveMarketReference.count(),
+      prisma.arveMarketObservation.count(),
+    ]);
+
+    return res.json({
+      ok: true,
+      enabled: String(process.env.ARVE_ENABLED || "true").toLowerCase() !== "false",
+      openAiConfigured: Boolean(process.env.OPENAI_API_KEY?.trim()),
+      model: process.env.OPENAI_MODEL || "gpt-5-mini",
+      promptVersion: process.env.ARVE_PROMPT_VERSION || "ascari-arve-v2",
+      visionEnabled:
+        String(process.env.OPENAI_VISION_ENABLED || "true").toLowerCase() !== "false",
+      marketReferences,
+      marketObservations,
+      marketDatasetReady: marketReferences > 0,
+    });
+  } catch (error: any) {
+    return res.status(503).json({
+      ok: false,
+      error: error?.message || "ARVE database non disponibile",
+    });
+  }
 });
 
 /**
@@ -121,6 +136,9 @@ router.post("/cars/:id/analyze", async (req, res) => {
       cached: false,
       carId,
       analysisId: analysis?.id ?? null,
+      originalOfferPrice1: analysis?.originalOfferPrice1 ?? input.originalOfferPrice1,
+      originalOfferPrice2: analysis?.originalOfferPrice2 ?? input.originalOfferPrice2,
+      originalOfferPrice3: analysis?.originalOfferPrice3 ?? input.originalOfferPrice3,
       ...result,
     });
   } catch (error: any) {

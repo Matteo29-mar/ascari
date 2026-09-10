@@ -3,9 +3,11 @@ import { zodTextFormat } from "openai/helpers/zod";
 import { z } from "zod";
 import {
   ArveComparableItem,
+  ArveMarketReferenceItem,
   ArvePricingInput,
   ArvePricingResult,
 } from "../../types/arvePricing";
+import { summarizeMarketReferences } from "./marketReferenceService";
 
 const arveResponseSchema = z.object({
   quickSalePrice: z.number().positive(),
@@ -20,18 +22,7 @@ const arveResponseSchema = z.object({
   evidenceLevel: z.number().int().min(1).max(4),
 });
 
-type OpenAiArveParsed = {
-  quickSalePrice: number;
-  reservePrice: number;
-  democraticPrice: number;
-  marketMin: number;
-  marketMax: number;
-  marketMedian: number;
-  recommendation: "LOWER" | "RAISE" | "KEEP";
-  message: string;
-  confidence: number;
-  evidenceLevel: number;
-};
+type OpenAiArveParsed = z.infer<typeof arveResponseSchema>;
 
 function compactComparable(item: ArveComparableItem) {
   return {
@@ -50,6 +41,24 @@ function compactComparable(item: ArveComparableItem) {
     evidenceWeight: item.evidenceWeight,
     similarityScore: item.similarityScore,
     daysToSell: item.daysToSell,
+  };
+}
+
+function compactMarketReference(item: ArveMarketReferenceItem) {
+  return {
+    make: item.make,
+    model: item.model,
+    trimLevel: item.trimLevel,
+    fuelType: item.fuelType,
+    referenceYear: item.referenceYear,
+    kmMin: item.kmMin,
+    kmMax: item.kmMax,
+    priceMin: item.priceMin,
+    priceMax: item.priceMax,
+    quality: item.quality,
+    qualityWeight: item.qualityWeight,
+    similarityScore: item.similarityScore,
+    sourceVersion: item.sourceVersion,
   };
 }
 
@@ -79,9 +88,20 @@ function buildProductPayload(input: ArvePricingInput) {
   };
 }
 
+function resolveSourceType(
+  privateCount: number,
+  marketCount: number
+): ArvePricingResult["sourceType"] {
+  if (privateCount && marketCount) return "OPENAI_HYBRID_DATASET";
+  if (marketCount) return "OPENAI_MARKET_REFERENCE";
+  if (privateCount) return "OPENAI_PRIVATE_DATASET";
+  return "OPENAI_NO_PRIVATE_MATCHES";
+}
+
 export async function analyzeWithOpenAI(params: {
   input: ArvePricingInput;
   privateMatches: ArveComparableItem[];
+  marketReferences: ArveMarketReferenceItem[];
 }): Promise<ArvePricingResult> {
   const apiKey = process.env.OPENAI_API_KEY?.trim();
   if (!apiKey) {
@@ -89,7 +109,7 @@ export async function analyzeWithOpenAI(params: {
   }
 
   const model = process.env.OPENAI_MODEL?.trim() || "gpt-5-mini";
-  const promptVersion = process.env.ARVE_PROMPT_VERSION || "ascari-arve-v1";
+  const promptVersion = process.env.ARVE_PROMPT_VERSION || "ascari-arve-v2";
   const timeoutMs = Math.max(
     5_000,
     Number(process.env.ARVE_ANALYSIS_TIMEOUT_MS || 25_000)
@@ -98,6 +118,7 @@ export async function analyzeWithOpenAI(params: {
     String(process.env.OPENAI_VISION_ENABLED || "true").toLowerCase() !== "false";
 
   const client = new OpenAI({ apiKey });
+  const marketSummary = summarizeMarketReferences(params.marketReferences);
 
   const content: any[] = [
     {
@@ -106,7 +127,19 @@ export async function analyzeWithOpenAI(params: {
         {
           currency: "EUR",
           product: buildProductPayload(params.input),
-          privateComparables: params.privateMatches.map(compactComparable),
+          arveMarketReference: {
+            summary: marketSummary,
+            items: params.marketReferences.map(compactMarketReference),
+          },
+          ascariPrivateDataset: params.privateMatches.map(compactComparable),
+          evidencePolicy: {
+            realSale: "highest",
+            acceptedOffer: "high",
+            verifiedExcelReference: "medium-high",
+            activeListing: "low",
+            modelEstimateExcelReference: "low",
+            previousArvePrediction: "never treat as real market evidence",
+          },
           promptVersion,
         },
         null,
@@ -133,11 +166,15 @@ export async function analyzeWithOpenAI(params: {
       instructions: [
         "Sei ARVE, Automotive Real Value Engine di Ascari.",
         "Devi stimare tre prezzi in euro per un'auto usata: quickSalePrice è il prezzo più basso per vendita rapida; reservePrice è il minimo prudente per il venditore; democraticPrice è il prezzo equilibrato e competitivo.",
-        "Usa esclusivamente i dati dell'auto e i comparabili forniti. Non dichiarare di aver consultato siti, annunci o database esterni.",
-        "Una vendita reale (REAL_SALE) è la prova più affidabile. Un suggerimento ARVE accettato è meno affidabile; una stima non accettata o pendente ha peso basso.",
+        "Usa esclusivamente i dati dell'auto, i riferimenti prezzi ARVE importati dal foglio Excel e i comparabili ASCARI forniti. Non dichiarare di aver consultato siti, annunci o database esterni.",
+        "Ordine di affidabilità: vendita reale > offerta realmente accettata > riferimento Excel VERIFIED > riferimento Excel AGGREGATED > annuncio attivo > riferimento Excel MODEL_ESTIMATE > TO_VALIDATE.",
+        "Non usare mai una precedente previsione ARVE come prova che quel prezzo sia corretto.",
+        "Se il foglio contiene una combinazione alimentazione/modello poco credibile o marcata TO_VALIDATE/MODEL_ESTIMATE, abbassa il peso e la confidence.",
         "Correggi mentalmente le differenze di anno, chilometri, alimentazione, cambio, potenza, allestimento, città e presenza di perizia.",
+        "Confronta anche i tre prezzi inseriti dall'utente con il valore di mercato risultante.",
         "Mantieni sempre quickSalePrice < reservePrice < democraticPrice e marketMin <= quickSalePrice <= democraticPrice <= marketMax.",
-        "La motivazione deve essere breve, trasparente, comprensibile e non deve promettere certezza di vendita.",
+        "La motivazione deve essere breve, trasparente e comprensibile; cita in modo generico 'base prezzi ARVE' e/o 'dati ASCARI' senza inventare fonti.",
+        "Non promettere certezza di vendita.",
       ].join("\n"),
       input: [
         {
@@ -163,19 +200,25 @@ export async function analyzeWithOpenAI(params: {
   return {
     ...parsed,
     privateMatchesCount: params.privateMatches.length,
-    sourceType: params.privateMatches.length
-      ? "OPENAI_PRIVATE_DATASET"
-      : "OPENAI_NO_PRIVATE_MATCHES",
+    marketReferenceMatchesCount: params.marketReferences.length,
+    marketReferenceQuality: marketSummary.quality,
+    marketReferenceMedian: marketSummary.median,
+    sourceType: resolveSourceType(
+      params.privateMatches.length,
+      params.marketReferences.length
+    ),
     modelUsed: model,
     promptVersion,
     inputTokens: usage?.input_tokens ?? null,
     outputTokens: usage?.output_tokens ?? null,
     totalTokens: usage?.total_tokens ?? null,
     comparableItems: params.privateMatches,
+    marketReferenceItems: params.marketReferences,
     rawResponseJson: {
       responseId: response.id,
       status: response.status,
       parsed,
+      marketReferenceSummary: marketSummary,
     },
   };
 }
