@@ -1,5 +1,23 @@
 import PDFDocument = require("pdfkit");
 
+const CATEGORY_LABELS: Record<string, string> = {
+  BODYWORK: "Carrozzeria",
+  INTERIOR: "Interni",
+  ENGINE: "Motore",
+  MECHANICS: "Meccanica",
+  TIRES: "Pneumatici",
+  ELECTRONICS: "Elettronica",
+  TEST_DRIVE: "Test drive",
+};
+
+const SCORE_LABELS: Record<number, string> = {
+  1: "Da buttare",
+  2: "Danneggiato",
+  3: "Normale",
+  4: "Buone condizioni",
+  5: "Come nuovo",
+};
+
 export function buildPdfBuffer(report: any): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({ margin: 45 });
@@ -48,22 +66,78 @@ export function buildPdfBuffer(report: any): Promise<Buffer> {
 
     doc.moveDown();
 
-    const section = (title: string, value?: string | null) => {
-      doc.fontSize(13).font("Helvetica-Bold").text(title);
-      doc.moveDown(0.2);
-      doc.fontSize(11).font("Helvetica").text(value?.trim() ? value : "-");
-      doc.moveDown();
-    };
+    const ratings = Array.isArray(report.ratings) ? report.ratings : [];
+    if (ratings.length > 0) {
+      doc.fontSize(15).font("Helvetica-Bold").text("Valutazione visuale 1-5");
+      doc
+        .fontSize(9.5)
+        .font("Helvetica")
+        .text("Scala: 1 Da buttare · 2 Danneggiato · 3 Normale · 4 Buone condizioni · 5 Come nuovo");
+      doc.moveDown(0.4);
 
-    section("Carrozzeria", report.bodyworkNotes);
-    section("Interni", report.interiorNotes);
-    section("Motore", report.engineNotes);
-    section("Meccanica", report.mechanicsNotes);
-    section("Pneumatici", report.tiresNotes);
-    section("Elettronica", report.electronicsNotes);
-    section("Test drive", report.testDriveNotes);
-    section("Difetti riscontrati", report.defectsFound);
-    section("Parere finale", report.finalOpinion);
+      const categories = Object.keys(CATEGORY_LABELS);
+      for (const category of categories) {
+        const items = ratings.filter((rating: any) => rating.category === category);
+        if (!items.length) continue;
+
+        const average =
+          Math.round(
+            (items.reduce((sum: number, item: any) => sum + Number(item.score || 0), 0) /
+              items.length) *
+              10
+          ) / 10;
+
+        doc.fontSize(13).font("Helvetica-Bold").text(
+          `${CATEGORY_LABELS[category]} - media ${average}/5`
+        );
+        doc.moveDown(0.2);
+
+        for (const item of items) {
+          const score = Number(item.score || 0);
+          doc
+            .fontSize(10.5)
+            .font("Helvetica-Bold")
+            .text(`${item.pointLabel}: ${score}/5`, { continued: true });
+          doc
+            .font("Helvetica")
+            .text(` - ${SCORE_LABELS[score] || ""}`);
+          if (item.note?.trim()) {
+            doc.font("Helvetica-Oblique").text(`Nota: ${item.note.trim()}`);
+          }
+          doc.moveDown(0.2);
+        }
+        doc.moveDown(0.5);
+      }
+    } else {
+      // Compatibilità con i resoconti creati prima della perizia visuale.
+      const section = (title: string, value?: string | null) => {
+        doc.fontSize(13).font("Helvetica-Bold").text(title);
+        doc.moveDown(0.2);
+        doc.fontSize(11).font("Helvetica").text(value?.trim() ? value : "-");
+        doc.moveDown();
+      };
+
+      section("Carrozzeria", report.bodyworkNotes);
+      section("Interni", report.interiorNotes);
+      section("Motore", report.engineNotes);
+      section("Meccanica", report.mechanicsNotes);
+      section("Pneumatici", report.tiresNotes);
+      section("Elettronica", report.electronicsNotes);
+      section("Test drive", report.testDriveNotes);
+      section("Difetti riscontrati", report.defectsFound);
+    }
+
+    doc.moveDown();
+    doc.fontSize(13).font("Helvetica-Bold").text("Parere finale");
+    doc.moveDown(0.2);
+    doc.fontSize(11).font("Helvetica").text(report.finalOpinion?.trim() || "-");
+
+    if (report.valuationOpinion?.trim()) {
+      doc.moveDown();
+      doc.fontSize(13).font("Helvetica-Bold").text("Parere sulla valutazione dell'auto");
+      doc.moveDown(0.2);
+      doc.fontSize(11).font("Helvetica").text(report.valuationOpinion.trim());
+    }
 
     doc.end();
   });

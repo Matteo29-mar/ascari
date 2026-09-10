@@ -1,11 +1,72 @@
 // backend/src/routes/inspector.ts
 import { Router } from "express";
+import crypto from "crypto";
+import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { prisma } from "../prisma";
 import { getAuth } from "@clerk/express";
 import { InspectionStatus, MatchType } from "@prisma/client";
 import { geocodeAddress } from "../lib/geocode";
 
 const router = Router();
+
+const awsRegion = process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || "eu-west-1";
+const carImagesBucket = process.env.ASCARI_CAR_IMAGES_BUCKET || "";
+const carImagesPublicBaseUrl = (process.env.ASCARI_CAR_IMAGES_PUBLIC_BASE_URL || "").replace(/\/$/, "");
+const s3 = new S3Client({ region: awsRegion });
+
+function text(value: unknown) {
+  if (typeof value !== "string") return null;
+  const v = value.trim();
+  return v ? v : null;
+}
+
+function isDataImage(value: unknown): value is string {
+  return typeof value === "string" && /^data:image\/[a-zA-Z0-9.+-]+;base64,/.test(value.trim());
+}
+
+function extensionForMime(mime: string) {
+  const normalized = mime.toLowerCase();
+  if (normalized === "image/png") return "png";
+  if (normalized === "image/webp") return "webp";
+  if (normalized === "image/gif") return "gif";
+  return "jpg";
+}
+
+function publicS3Url(key: string) {
+  if (carImagesPublicBaseUrl) return `${carImagesPublicBaseUrl}/${key}`;
+  return `https://${carImagesBucket}.s3.${awsRegion}.amazonaws.com/${key}`;
+}
+
+async function storeInspectorLogo(value: unknown, userId: string) {
+  const logo = text(value);
+  if (!logo) return null;
+  if (!isDataImage(logo)) return logo;
+
+  if (!carImagesBucket) {
+    throw new Error("ASCARI_CAR_IMAGES_BUCKET non configurato: impossibile salvare il logo");
+  }
+
+  const match = logo.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/);
+  if (!match) throw new Error("Formato logo non valido");
+
+  const mime = match[1];
+  const buffer = Buffer.from(match[2], "base64");
+  if (!buffer.length) throw new Error("Logo vuoto");
+  if (buffer.length > 5 * 1024 * 1024) throw new Error("Il logo non può superare 5 MB");
+
+  const hash = crypto.createHash("sha256").update(buffer).digest("hex").slice(0, 16);
+  const key = `inspectors/${userId}/logo-${Date.now()}-${hash}.${extensionForMime(mime)}`;
+
+  await s3.send(new PutObjectCommand({
+    Bucket: carImagesBucket,
+    Key: key,
+    Body: buffer,
+    ContentType: mime,
+    CacheControl: "public, max-age=31536000, immutable",
+  }));
+
+  return publicS3Url(key);
+}
 
 /**
  * Helper: assicura che l'utente esista nel DB
@@ -202,6 +263,7 @@ router.post("/register", async (req, res) => {
       radiusKm,
       workStartMin,
       workEndMin,
+      logoUrl,
       userName,
     } = req.body ?? {};
 
@@ -212,6 +274,17 @@ router.post("/register", async (req, res) => {
     }
 
     const user = await ensureUser(clerkId, email, userName);
+
+    const dealerProfile = await prisma.dealerProfile.findUnique({
+      where: { userId: user.id },
+      select: { id: true },
+    });
+
+    if (dealerProfile) {
+      return res.status(409).json({
+        error: "Questo account è già registrato come concessionario e non può diventare periziatore.",
+      });
+    }
 
     const geocoded = await geocodeWorkshopIfPossible(
       workshopAddress ?? null,
@@ -226,12 +299,15 @@ router.post("/register", async (req, res) => {
       geocoded?.longitude ??
       (typeof longitude === "number" ? longitude : null);
 
+    const storedLogoUrl = logoUrl !== undefined ? await storeInspectorLogo(logoUrl, user.id) : undefined;
+
     const profile = await prisma.inspectorProfile.upsert({
       where: { userId: user.id },
       create: {
         userId: user.id,
         workshopName,
         workshopAddress: workshopAddress ?? null,
+        logoUrl: storedLogoUrl ?? null,
         email,
         phone,
         city: city ?? null,
@@ -244,6 +320,7 @@ router.post("/register", async (req, res) => {
       update: {
         workshopName,
         workshopAddress: workshopAddress ?? null,
+        ...(storedLogoUrl !== undefined ? { logoUrl: storedLogoUrl } : {}),
         email,
         phone,
         city: city ?? null,
@@ -282,6 +359,7 @@ router.put("/me", async (req, res) => {
       latitude,
       longitude,
       calendarConfirmedColor,
+      logoUrl,
     } = req.body ?? {};
 
     const user = await prisma.user.findUnique({ where: { clerkId } });
@@ -322,11 +400,14 @@ router.put("/me", async (req, res) => {
       if (typeof longitude === "number") nextLongitude = longitude;
     }
 
+    const storedLogoUrl = logoUrl !== undefined ? await storeInspectorLogo(logoUrl, user.id) : undefined;
+
     const updated = await prisma.inspectorProfile.update({
       where: { userId: user.id },
       data: {
         workshopName: workshopName ?? existing.workshopName,
         workshopAddress: nextWorkshopAddress ?? null,
+        ...(storedLogoUrl !== undefined ? { logoUrl: storedLogoUrl } : {}),
         email: email ?? existing.email,
         phone: phone ?? existing.phone,
         city: nextCity ?? null,
@@ -397,11 +478,9 @@ router.post("/slots", async (req, res) => {
 
     const start = new Date(startAt);
     const end = new Date(endAt);
-
     if (isNaN(start.getTime()) || isNaN(end.getTime())) {
       return res.status(400).json({ error: "Date non valide" });
     }
-
     if (end <= start) {
       return res.status(400).json({ error: "endAt deve essere maggiore di startAt" });
     }
@@ -409,26 +488,119 @@ router.post("/slots", async (req, res) => {
     const user = await prisma.user.findUnique({ where: { clerkId } });
     if (!user) return res.status(400).json({ error: "Utente non presente nel DB" });
 
-    const profile = await prisma.inspectorProfile.findUnique({
-      where: { userId: user.id },
+    const profile = await prisma.inspectorProfile.findUnique({ where: { userId: user.id } });
+    if (!profile) return res.status(404).json({ error: "Profilo periziatore non trovato" });
+
+    const overlapping = await prisma.inspectorSlot.findFirst({
+      where: {
+        inspectorId: profile.id,
+        startAt: { lt: end },
+        endAt: { gt: start },
+      },
     });
-    if (!profile) {
-      return res.status(404).json({ error: "Profilo periziatore non trovato" });
+
+    if (overlapping) {
+      return res.status(409).json({ error: "Esiste già una disponibilità che si sovrappone a questa fascia." });
     }
 
     const created = await prisma.inspectorSlot.create({
-      data: {
-        inspectorId: profile.id,
-        startAt: start,
-        endAt: end,
-        isAvailable: true,
-      },
+      data: { inspectorId: profile.id, startAt: start, endAt: end, isAvailable: true },
     });
 
     return res.json({ ok: true, slot: created });
   } catch (e) {
     console.error(e);
     return res.status(500).json({ error: "Errore server" });
+  }
+});
+
+/**
+ * POST /api/inspector/slots/bulk
+ * Crea più giornate di disponibilità in una sola operazione.
+ */
+router.post("/slots/bulk", async (req, res) => {
+  try {
+    const { userId: clerkId } = getAuth(req);
+    if (!clerkId) return res.status(401).json({ error: "Non autenticato" });
+
+    type BulkSlotInput = {
+      startAt?: string;
+      endAt?: string;
+    };
+
+    type ParsedBulkSlot = {
+      startAt: Date;
+      endAt: Date;
+    };
+
+    const input: BulkSlotInput[] = Array.isArray(req.body?.slots)
+      ? (req.body.slots as BulkSlotInput[])
+      : [];
+
+    if (!input.length || input.length > 31) {
+      return res
+        .status(400)
+        .json({ error: "Invia da 1 a 31 fasce di disponibilità." });
+    }
+
+    const parsed: ParsedBulkSlot[] = input.map((item: BulkSlotInput) => ({
+      startAt: new Date(item.startAt ?? ""),
+      endAt: new Date(item.endAt ?? ""),
+    }));
+
+    if (
+      parsed.some(
+        (slot: ParsedBulkSlot) =>
+          isNaN(slot.startAt.getTime()) ||
+          isNaN(slot.endAt.getTime()) ||
+          slot.endAt <= slot.startAt
+      )
+    ) {
+      return res
+        .status(400)
+        .json({ error: "Una o più fasce hanno data/orario non valido." });
+    }
+
+    const sorted = [...parsed].sort((a, b) => a.startAt.getTime() - b.startAt.getTime());
+    for (let i = 1; i < sorted.length; i += 1) {
+      if (sorted[i].startAt < sorted[i - 1].endAt) {
+        return res.status(400).json({ error: "Le fasce inviate si sovrappongono tra loro." });
+      }
+    }
+
+    const user = await prisma.user.findUnique({ where: { clerkId } });
+    if (!user) return res.status(400).json({ error: "Utente non presente nel DB" });
+    const profile = await prisma.inspectorProfile.findUnique({ where: { userId: user.id } });
+    if (!profile) return res.status(404).json({ error: "Profilo periziatore non trovato" });
+
+    const firstStart = sorted[0].startAt;
+    const lastEnd = sorted[sorted.length - 1].endAt;
+    const existing = await prisma.inspectorSlot.findMany({
+      where: {
+        inspectorId: profile.id,
+        startAt: { lt: lastEnd },
+        endAt: { gt: firstStart },
+      },
+      select: { id: true, startAt: true, endAt: true },
+    });
+
+    const conflict = sorted.some((candidate) =>
+      existing.some((slot) => slot.startAt < candidate.endAt && slot.endAt > candidate.startAt)
+    );
+    if (conflict) {
+      return res.status(409).json({ error: "Una o più giornate si sovrappongono a disponibilità già presenti." });
+    }
+
+    const created = await prisma.$transaction(
+      sorted.map((slot) => prisma.inspectorSlot.create({
+        data: { inspectorId: profile.id, startAt: slot.startAt, endAt: slot.endAt, isAvailable: true },
+      }))
+    );
+
+    return res.json({ ok: true, slots: created });
+  } catch (e: any) {
+    console.error(e);
+    return res.status(500).json({ error: e?.message ?? "Errore server" });
   }
 });
 
@@ -456,6 +628,9 @@ router.delete("/slots/:id", async (req, res) => {
     const slot = await prisma.inspectorSlot.findUnique({ where: { id: slotId } });
     if (!slot || slot.inspectorId !== profile.id) {
       return res.status(404).json({ error: "Slot non trovato" });
+    }
+    if (!slot.isAvailable) {
+      return res.status(409).json({ error: "Una fascia occupata da una perizia non può essere rimossa dal calendario." });
     }
 
     await prisma.inspectorSlot.delete({ where: { id: slotId } });
@@ -557,12 +732,16 @@ router.post("/inspections/request", async (req, res) => {
       });
     }
 
-    const requestedStartAt = new Date(`${requestedDate}T${startTime}:00`);
-    const requestedEndAt = new Date(`${requestedDate}T${endTime}:00`);
+    const requestedStartMin = hhmmToMinutes(startTime);
+    const requestedEndMin = hhmmToMinutes(endTime);
 
     if (
-      Number.isNaN(requestedStartAt.getTime()) ||
-      Number.isNaN(requestedEndAt.getTime())
+      !/^\d{4}-\d{2}-\d{2}$/.test(requestedDate) ||
+      !/^\d{2}:\d{2}$/.test(startTime) ||
+      !/^\d{2}:\d{2}$/.test(endTime) ||
+      requestedStartMin < 0 ||
+      requestedEndMin > 24 * 60 ||
+      requestedEndMin <= requestedStartMin
     ) {
       return res.status(400).json({
         ok: false,
@@ -570,34 +749,74 @@ router.post("/inspections/request", async (req, res) => {
       });
     }
 
-    if (requestedEndAt <= requestedStartAt) {
-      return res.status(400).json({
-        ok: false,
-        error: "endTime deve essere > startTime",
-      });
-    }
-
-    const requestedStartMin = hhmmToMinutes(startTime);
-    const requestedEndMin = hhmmToMinutes(endTime);
-    const requestedDurationMin = minutesBetween(
-      requestedStartAt,
-      requestedEndAt
-    );
+    const requestedDurationMin = requestedEndMin - requestedStartMin;
 
     async function createInspectionFromSlot(
       slotId: number,
-      matchType: MatchType
+      matchType: MatchType,
+      explicitAppointmentStartAt?: Date,
+      explicitAppointmentEndAt?: Date
     ) {
       return prisma.$transaction(async (tx) => {
         const slotNow = await tx.inspectorSlot.findUnique({
           where: { id: slotId },
-          include: {
-            inspector: true,
-          },
+          include: { inspector: true },
         });
 
         if (!slotNow || !slotNow.isAvailable) {
           throw new Error("Slot non più disponibile");
+        }
+
+        const slotLocalStart = getRomeDateParts(slotNow.startAt);
+        const appointmentStartAt = explicitAppointmentStartAt ?? new Date(
+          slotNow.startAt.getTime() + (requestedStartMin - slotLocalStart.minutesOfDay) * 60000
+        );
+        const appointmentEndAt = explicitAppointmentEndAt ?? new Date(
+          appointmentStartAt.getTime() + requestedDurationMin * 60000
+        );
+
+        if (appointmentStartAt < slotNow.startAt || appointmentEndAt > slotNow.endAt || appointmentEndAt <= appointmentStartAt) {
+          throw new Error("L'orario richiesto non è più contenuto nella disponibilità del periziatore");
+        }
+
+        // Lo slot originale diventa esattamente la fascia occupata dalla perizia.
+        // Le porzioni libere prima/dopo vengono ricreate come nuovi slot disponibili.
+        const originalStart = slotNow.startAt;
+        const originalEnd = slotNow.endAt;
+
+        const claimed = await tx.inspectorSlot.updateMany({
+          where: { id: slotNow.id, isAvailable: true },
+          data: {
+            startAt: appointmentStartAt,
+            endAt: appointmentEndAt,
+            isAvailable: false,
+          },
+        });
+
+        if (claimed.count !== 1) {
+          throw new Error("Slot non più disponibile");
+        }
+
+        if (originalStart < appointmentStartAt) {
+          await tx.inspectorSlot.create({
+            data: {
+              inspectorId: slotNow.inspectorId,
+              startAt: originalStart,
+              endAt: appointmentStartAt,
+              isAvailable: true,
+            },
+          });
+        }
+
+        if (appointmentEndAt < originalEnd) {
+          await tx.inspectorSlot.create({
+            data: {
+              inspectorId: slotNow.inspectorId,
+              startAt: appointmentEndAt,
+              endAt: originalEnd,
+              isAvailable: true,
+            },
+          });
         }
 
         const request = await tx.inspectionRequest.create({
@@ -606,8 +825,8 @@ router.post("/inspections/request", async (req, res) => {
             sellerId: sellerUser.id,
             inspectorId: slotNow.inspectorId,
             inspectorSlotId: slotNow.id,
-            startAt: slotNow.startAt,
-            endAt: slotNow.endAt,
+            startAt: appointmentStartAt,
+            endAt: appointmentEndAt,
             status: InspectionStatus.ASSIGNED,
             matchType,
             notes: null,
@@ -636,6 +855,7 @@ router.post("/inspections/request", async (req, res) => {
                 id: true,
                 workshopName: true,
                 workshopAddress: true,
+                logoUrl: true,
                 email: true,
                 phone: true,
                 city: true,
@@ -644,11 +864,6 @@ router.post("/inspections/request", async (req, res) => {
             },
             inspectorSlot: true,
           },
-        });
-
-        await tx.inspectorSlot.update({
-          where: { id: slotNow.id },
-          data: { isAvailable: false },
         });
 
         return request;
@@ -732,9 +947,13 @@ router.post("/inspections/request", async (req, res) => {
         });
       }
 
+      const suggestionStart = slot.startAt;
+      const suggestionEnd = new Date(suggestionStart.getTime() + requestedDurationMin * 60000);
       const created = await createInspectionFromSlot(
         suggestedSlotIdNum,
-        MatchType.FLEXIBLE_TIME
+        MatchType.FLEXIBLE_TIME,
+        suggestionStart,
+        suggestionEnd
       );
 
       return res.json({
@@ -845,7 +1064,8 @@ router.post("/inspections/request", async (req, res) => {
         const slotDurationMin = minutesBetween(slot.startAt, slot.endAt);
         if (slotDurationMin < requestedDurationMin) continue;
 
-        const delta = absMs(slot.startAt, requestedStartAt);
+        const slotLocal = getRomeDateParts(slot.startAt);
+        const delta = Math.abs(slotLocal.minutesOfDay - requestedStartMin) * 60000;
 
         if (!bestSuggestion || delta < bestSuggestion.deltaMs) {
           bestSuggestion = {
@@ -854,7 +1074,7 @@ router.post("/inspections/request", async (req, res) => {
             inspectorName: inspector.workshopName,
             inspectorCity: inspector.city ?? null,
             startAt: slot.startAt,
-            endAt: slot.endAt,
+            endAt: new Date(slot.startAt.getTime() + requestedDurationMin * 60000),
             deltaMs: delta,
           };
         }
@@ -1236,10 +1456,44 @@ router.post("/inspections/:id/cancel", async (req, res) => {
         data: { status: "CANCELLED" },
       });
 
-      await tx.inspectorSlot.update({
+      const reopened = await tx.inspectorSlot.update({
         where: { id: ir.inspectorSlotId },
         data: { isAvailable: true },
       });
+
+      // Ricompone le fasce adiacenti create dallo split della disponibilità.
+      // Esempio: 09:00-11:30 + 11:30-12:30 + 12:30-18:00 torna 09:00-18:00.
+      const previous = await tx.inspectorSlot.findFirst({
+        where: {
+          inspectorId: reopened.inspectorId,
+          isAvailable: true,
+          id: { not: reopened.id },
+          endAt: reopened.startAt,
+        },
+        orderBy: { startAt: "desc" },
+      });
+
+      const next = await tx.inspectorSlot.findFirst({
+        where: {
+          inspectorId: reopened.inspectorId,
+          isAvailable: true,
+          id: { not: reopened.id },
+          startAt: reopened.endAt,
+        },
+        orderBy: { endAt: "asc" },
+      });
+
+      const mergedStart = previous?.startAt ?? reopened.startAt;
+      const mergedEnd = next?.endAt ?? reopened.endAt;
+      const toDelete = [previous?.id, next?.id].filter((id): id is number => typeof id === "number");
+
+      if (toDelete.length) {
+        await tx.inspectorSlot.deleteMany({ where: { id: { in: toDelete } } });
+        await tx.inspectorSlot.update({
+          where: { id: reopened.id },
+          data: { startAt: mergedStart, endAt: mergedEnd },
+        });
+      }
 
       let chat = await tx.chat.findUnique({
         where: { inspectionRequestId: inspectionId },

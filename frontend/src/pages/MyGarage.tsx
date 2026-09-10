@@ -10,12 +10,14 @@ import {
   getStripeAccountStatus,
   createStripeOnboardingLink,
   getCarQrStats,
+  getDealerSubscription,
 } from "../api";
 import { Link, useNavigate } from "react-router-dom";
 import LikeButton from "../components/LikeButton";
 import { http } from "../api";
 import AscariPopup from "../components/AscariPopup";
 import QrStatsModal, { QrStats } from "../components/QrStatsModal";
+import { useRole } from "../hooks/useRole";
 
 type Car = {
   id: number;
@@ -44,6 +46,8 @@ type Car = {
   removalScheduledAt?: string | null;
   visuallyRemovedAt?: string | null;
   paymentStatus?: string | null;
+  dealerPlanSuspended?: boolean;
+  dealerPlanSuspendedAt?: string | null;
 };
 
 type MyGarageResponse = {
@@ -143,6 +147,30 @@ function PaymentBadge({ enabled }: { enabled: boolean }) {
         }}
       />
       Pagamento: {enabled ? "SI" : "NO"}
+    </span>
+  );
+}
+
+function DealerPlanSuspendedBadge({ suspended }: { suspended?: boolean }) {
+  if (!suspended) return null;
+
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 8,
+        padding: "6px 10px",
+        borderRadius: 999,
+        fontWeight: 900,
+        fontSize: 12,
+        border: "1px solid rgba(248,113,113,0.45)",
+        background: "rgba(248,113,113,0.12)",
+        color: "#fecaca",
+      }}
+      title="Auto temporaneamente non visibile nella vetrina pubblica perché l'abbonamento concessionaria non è attivo"
+    >
+      Sospesa dal piano
     </span>
   );
 }
@@ -255,6 +283,8 @@ function formatEuro(value?: number | null) {
 function MyGarageContent() {
   const { getToken } = useAuth();
   const nav = useNavigate();
+  const { role } = useRole();
+  const isDealer = role === "CONCESSIONARIO";
 
   const [data, setData] = useState<MyGarageResponse>({
     myCars: [],
@@ -283,6 +313,7 @@ function MyGarageContent() {
   const [qrStatsOpen, setQrStatsOpen] = useState(false);
   const [qrStatsLoading, setQrStatsLoading] = useState(false);
   const [qrStats, setQrStats] = useState<QrStats | null>(null);
+  const [dealerStatsEnabled, setDealerStatsEnabled] = useState(true);
 
   const [popup, setPopup] = useState<PopupState>({
     open: false,
@@ -329,6 +360,19 @@ function MyGarageContent() {
       const res = await getMyGarage(token);
       const normalized = normalizeGarage(res);
       setData(normalized);
+
+      if (isDealer) {
+        try {
+          const subscription = await getDealerSubscription(token);
+          setDealerStatsEnabled(!!subscription?.current?.statsEnabled);
+        } catch (subscriptionError) {
+          console.error("Errore piano concessionaria:", subscriptionError);
+          setDealerStatsEnabled(false);
+        }
+      } else {
+        setDealerStatsEnabled(true);
+      }
+
       await loadStripeStatus();
     } catch (e: any) {
       console.error("Errore caricamento garage:", e);
@@ -341,7 +385,8 @@ function MyGarageContent() {
 
   useEffect(() => {
     loadGarage();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isDealer]);
 
   async function handleEnablePayments() {
     try {
@@ -764,6 +809,7 @@ function MyGarageContent() {
                     <h3 style={{ margin: 0 }}>{car.title}</h3>
                     <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                       <SaleStatusBadge car={car} />
+                      <DealerPlanSuspendedBadge suspended={car.dealerPlanSuspended} />
                       <BadgePerizia ok={periziata} />
                       <PaymentBadge enabled={!!car.paymentEnabled} />
                     </div>
@@ -889,14 +935,16 @@ function MyGarageContent() {
                         Configura pagamento
                       </button>
                     )}
-                    <button
-                      className="btn secondary"
-                      type="button"
-                      onClick={() => openQrStats(car)}
-                      disabled={qrStatsLoading}
-                    >
-                      {qrStatsLoading ? "Caricamento..." : "Statistiche"}
-                    </button>
+                    {(!isDealer || dealerStatsEnabled) && (
+                      <button
+                        className="btn secondary"
+                        type="button"
+                        onClick={() => openQrStats(car)}
+                        disabled={qrStatsLoading}
+                      >
+                        {qrStatsLoading ? "Caricamento..." : "Statistiche"}
+                      </button>
+                    )}
 
                     <LikeButton
                       carId={car.id}

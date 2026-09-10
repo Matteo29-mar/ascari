@@ -1,6 +1,7 @@
 // backend/src/lib/carSaleLifecycle.ts
 
 import { PrismaClient, CarMarketStatus } from "@prisma/client";
+import { safeRecordArveMarketObservation } from "../services/arve/marketObservationService";
 
 export const SOLD_CAR_REMOVAL_DAYS = 5;
 
@@ -11,7 +12,11 @@ export function getSoldCarRemovalDate(fromDate = new Date()) {
 }
 
 export function isCarAvailable(car: any) {
-  return car?.marketStatus === CarMarketStatus.AVAILABLE && !car?.visuallyRemovedAt;
+  return (
+    car?.marketStatus === CarMarketStatus.AVAILABLE &&
+    !car?.visuallyRemovedAt &&
+    !car?.dealerPlanSuspended
+  );
 }
 
 export function isCarSoldPendingRemoval(car: any) {
@@ -44,6 +49,10 @@ export function getCarSaleStatus(car: any) {
     return "SOLD_PENDING_REMOVAL";
   }
 
+  if (car?.dealerPlanSuspended) {
+    return "DEALER_PLAN_SUSPENDED";
+  }
+
   return "AVAILABLE";
 }
 
@@ -55,6 +64,7 @@ export function getAvailableCarWhere() {
     },
     soldAt: null,
     visuallyRemovedAt: null,
+    dealerPlanSuspended: false,
   };
 }
 
@@ -80,7 +90,40 @@ export async function markCarAsSoldPendingRemoval(params: {
   const soldAt = params.soldAt ?? new Date();
   const removalScheduledAt = getSoldCarRemovalDate(soldAt);
 
-  return params.prisma.car.update({
+  const [carBeforeSale, payment, saleHistory] = await Promise.all([
+    params.prisma.car.findUnique({
+      where: { id: params.carId },
+      select: {
+        id: true,
+        createdAt: true,
+        salePriceEur: true,
+        make: true,
+        model: true,
+        year: true,
+        mileageKm: true,
+        fuelType: true,
+        transmission: true,
+        trimLevel: true,
+        offerPrice1: true,
+        offerPrice2: true,
+        offerPrice3: true,
+      },
+    }),
+    params.paymentId
+      ? params.prisma.payment.findUnique({
+          where: { id: params.paymentId },
+          select: { amountEur: true },
+        })
+      : Promise.resolve(null),
+    params.saleHistoryId
+      ? params.prisma.saleHistory.findUnique({
+          where: { id: params.saleHistoryId },
+          select: { amountEur: true },
+        })
+      : Promise.resolve(null),
+  ]);
+
+  const updatedCar = await params.prisma.car.update({
     where: {
       id: params.carId,
     },
@@ -97,6 +140,50 @@ export async function markCarAsSoldPendingRemoval(params: {
       soldBySaleHistoryId: params.saleHistoryId ?? null,
     },
   });
+
+  const actualSoldPriceEur =
+    saleHistory?.amountEur ?? payment?.amountEur ?? carBeforeSale?.salePriceEur ?? null;
+
+  if (actualSoldPriceEur && actualSoldPriceEur > 0) {
+    const daysToSell = carBeforeSale?.createdAt
+      ? Math.max(
+          0,
+          Math.round(
+            (soldAt.getTime() - carBeforeSale.createdAt.getTime()) / 86_400_000
+          )
+        )
+      : null;
+
+    await params.prisma.arvePricingAnalysis.updateMany({
+      where: { carId: params.carId },
+      data: {
+        actualSoldPriceEur,
+        actualSoldAt: soldAt,
+        daysToSell,
+      },
+    });
+
+    await safeRecordArveMarketObservation(params.prisma, {
+      type: "REAL_SALE",
+      externalKey: `sale:${params.carId}`,
+      car: carBeforeSale,
+      amountEur: actualSoldPriceEur,
+      occurredAt: soldAt,
+      metadata: {
+        paymentId: params.paymentId ?? null,
+        saleHistoryId: params.saleHistoryId ?? null,
+        daysToSell,
+      },
+    });
+
+    console.log(
+      `[ARVE_SALE] carId=${params.carId} soldPrice=${actualSoldPriceEur} daysToSell=${
+        daysToSell ?? "n/a"
+      }`
+    );
+  }
+
+  return updatedCar;
 }
 
 export async function markCarAsRemovedAfterSale(params: {
@@ -176,6 +263,7 @@ export function buildCarAvailabilityResponse(params: {
       soldAt: car.soldAt,
       removalScheduledAt: car.removalScheduledAt,
       visuallyRemovedAt: car.visuallyRemovedAt,
+      dealerPlanSuspended: !!car.dealerPlanSuspended,
     },
     alternatives,
   };

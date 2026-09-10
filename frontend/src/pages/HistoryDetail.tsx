@@ -492,7 +492,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
 
   backLink: {
-    color: "rgba(233,238,245,0.72)",
+    color: "var(--muted)",
     textDecoration: "none",
     fontWeight: 800,
   },
@@ -604,7 +604,7 @@ const styles: Record<string, React.CSSProperties> = {
 
   subtitle: {
     margin: "10px 0 18px",
-    color: "rgba(233,238,245,0.66)",
+    color: "var(--muted)",
     fontSize: 15,
   },
 
@@ -619,7 +619,7 @@ const styles: Record<string, React.CSSProperties> = {
 
   priceLabel: {
     display: "block",
-    color: "rgba(233,238,245,0.62)",
+    color: "var(--muted)",
     fontSize: 12,
     marginBottom: 4,
   },
@@ -639,8 +639,8 @@ const styles: Record<string, React.CSSProperties> = {
   smallInfo: {
     borderRadius: 16,
     padding: "10px 12px",
-    background: "rgba(0,0,0,0.18)",
-    border: "1px solid rgba(255,255,255,0.08)",
+    background: "var(--panel)",
+    border: "1px solid var(--panel-strong)",
     minWidth: 0,
   },
 
@@ -654,9 +654,9 @@ const styles: Record<string, React.CSSProperties> = {
   panel: {
     borderRadius: 24,
     padding: 20,
-    background: "rgba(255,255,255,0.055)",
-    border: "1px solid rgba(255,255,255,0.12)",
-    boxShadow: "0 20px 55px rgba(0,0,0,0.22)",
+    background: "var(--bg-card)",
+    border: "1px solid var(--panel-strong)",
+    boxShadow: "0 20px 55px rgba(0,0,0,0.12)",
   },
 
   sectionTitle: {
@@ -677,17 +677,18 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: "center",
     padding: "11px 12px",
     borderRadius: 16,
-    background: "rgba(0,0,0,0.16)",
-    border: "1px solid rgba(255,255,255,0.07)",
+
+    background: "var(--panel)",
+    border: "1px solid var(--panel-strong)",
   },
 
   infoRowLabel: {
-    color: "rgba(233,238,245,0.55)",
+    color: "var(--muted)",
     fontSize: 13,
   },
 
   infoRowValue: {
-    color: "rgba(233,238,245,0.92)",
+    color: "var(--text)",
     fontSize: 14,
     overflow: "hidden",
     textOverflow: "ellipsis",
@@ -704,8 +705,8 @@ const styles: Record<string, React.CSSProperties> = {
   noteBox: {
     padding: 14,
     borderRadius: 18,
-    background: "rgba(0,0,0,0.16)",
-    border: "1px solid rgba(255,255,255,0.07)",
+    background: "var(--panel)",
+    border: "1px solid var(--panel-strong)",
   },
 
   noteLabel: {
@@ -718,7 +719,7 @@ const styles: Record<string, React.CSSProperties> = {
 
   noteText: {
     margin: 0,
-    color: "rgba(233,238,245,0.72)",
+    color: "var(--text)",
     fontSize: 14,
     lineHeight: 1.5,
   },

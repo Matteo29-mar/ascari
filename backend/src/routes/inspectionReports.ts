@@ -7,6 +7,24 @@ import { buildPdfBuffer } from "../lib/buildInspection";
 
 const router = Router();
 
+const REQUIRED_INSPECTION_POINTS = [
+  { pointKey: "bodywork_front", category: "BODYWORK" },
+  { pointKey: "bodywork_left", category: "BODYWORK" },
+  { pointKey: "bodywork_right", category: "BODYWORK" },
+  { pointKey: "bodywork_rear", category: "BODYWORK" },
+  { pointKey: "interior_cabin", category: "INTERIOR" },
+  { pointKey: "engine_main", category: "ENGINE" },
+  { pointKey: "mechanics_front", category: "MECHANICS" },
+  { pointKey: "mechanics_rear", category: "MECHANICS" },
+  { pointKey: "tires_front_left", category: "TIRES" },
+  { pointKey: "tires_rear_left", category: "TIRES" },
+  { pointKey: "tires_front_right", category: "TIRES" },
+  { pointKey: "tires_rear_right", category: "TIRES" },
+  { pointKey: "electronics_main", category: "ELECTRONICS" },
+  { pointKey: "test_drive", category: "TEST_DRIVE" },
+] as const;
+
+
 async function getMe(req: any) {
   const { userId: clerkId } = getAuth(req);
   if (!clerkId) {
@@ -94,6 +112,7 @@ router.get("/archive", async (req, res) => {
       orderBy: { createdAt: "desc" },
       include: {
         cashout: true,
+        ratings: true,
         car: {
           select: {
             id: true,
@@ -137,6 +156,7 @@ router.get("/:id", async (req, res) => {
       },
       include: {
         cashout: true,
+        ratings: { orderBy: { id: "asc" } },
         car: true,
         inspectionRequest: true,
         inspectorUser: {
@@ -181,7 +201,9 @@ router.post("/", async (req, res) => {
       testDriveNotes,
       defectsFound,
       finalOpinion,
+      valuationOpinion,
       estimatedValue,
+      ratings,
     } = req.body ?? {};
 
     const inspectionRequestIdNum = Number(inspectionRequestId);
@@ -213,6 +235,61 @@ router.post("/", async (req, res) => {
       return res.status(409).json({ error: "Resoconto già esistente per questa perizia" });
     }
 
+    if (!Array.isArray(ratings)) {
+      return res.status(400).json({ error: "Compila i punti della perizia visuale" });
+    }
+
+    const normalizedRatings = ratings.map((rating: any) => ({
+      pointKey: String(rating?.pointKey || "").trim(),
+      pointLabel: String(rating?.pointLabel || "").trim(),
+      category: String(rating?.category || "").trim().toUpperCase(),
+      score: Number(rating?.score),
+      note:
+        typeof rating?.note === "string" && rating.note.trim()
+          ? rating.note.trim()
+          : null,
+    }));
+
+    const keys = new Set(normalizedRatings.map((rating: any) => rating.pointKey));
+    const missingPoints = REQUIRED_INSPECTION_POINTS.filter(
+      (point) => !keys.has(point.pointKey)
+    );
+    if (missingPoints.length > 0) {
+      return res.status(400).json({
+        error: `Completa tutti i punti della perizia: ne mancano ${missingPoints.length}.`,
+      });
+    }
+
+    for (const rating of normalizedRatings) {
+      const expected = REQUIRED_INSPECTION_POINTS.find(
+        (point) => point.pointKey === rating.pointKey
+      );
+      if (!expected || expected.category !== rating.category) {
+        return res.status(400).json({
+          error: `Punto perizia non valido: ${rating.pointKey || "sconosciuto"}`,
+        });
+      }
+      if (
+        !rating.pointLabel ||
+        !Number.isInteger(rating.score) ||
+        rating.score < 1 ||
+        rating.score > 5
+      ) {
+        return res.status(400).json({
+          error: `Valutazione non valida per ${rating.pointLabel || rating.pointKey}`,
+        });
+      }
+      if (rating.note && rating.note.length > 1500) {
+        return res.status(400).json({
+          error: `Nota troppo lunga per ${rating.pointLabel}`,
+        });
+      }
+    }
+
+    if (!String(finalOpinion || "").trim()) {
+      return res.status(400).json({ error: "Il parere finale è obbligatorio" });
+    }
+
     const created = await prisma.$transaction(async (tx) => {
       const report = await tx.inspectionReport.create({
         data: {
@@ -234,14 +311,27 @@ router.post("/", async (req, res) => {
           electronicsNotes: electronicsNotes ?? null,
           testDriveNotes: testDriveNotes ?? null,
           defectsFound: defectsFound ?? null,
-          finalOpinion: finalOpinion ?? null,
+          finalOpinion: String(finalOpinion).trim(),
+          valuationOpinion: valuationOpinion
+            ? String(valuationOpinion).trim()
+            : null,
           estimatedValue:
             estimatedValue != null && estimatedValue !== ""
               ? Number(estimatedValue)
               : null,
+          ratings: {
+            create: normalizedRatings.map((rating: any) => ({
+              pointKey: rating.pointKey,
+              pointLabel: rating.pointLabel,
+              category: rating.category,
+              score: rating.score,
+              note: rating.note,
+            })),
+          },
         },
         include: {
           cashout: true,
+          ratings: { orderBy: { id: "asc" } },
           car: true,
           inspectionRequest: true,
         },
@@ -287,6 +377,7 @@ router.get("/:id/pdf", async (req, res) => {
       },
       include: {
         cashout: true,
+        ratings: { orderBy: { id: "asc" } },
         car: true,
         inspectionRequest: true,
         inspectorUser: {

@@ -692,9 +692,15 @@ router.post("/cars/:carId/create-payment-intent", async (req, res) => {
       });
     }
 
-    if (car.paymentStatus === "SOLD" || car.marketStatus !== "AVAILABLE") {
+    if (
+      car.paymentStatus === "SOLD" ||
+      car.marketStatus !== "AVAILABLE" ||
+      car.dealerPlanSuspended
+    ) {
       return res.status(400).json({
-        error: "Auto già venduta",
+        error: car.dealerPlanSuspended
+          ? "Questa auto non è temporaneamente disponibile nel piano della concessionaria"
+          : "Auto già venduta",
       });
     }
 

@@ -1,5 +1,7 @@
 // frontend/src/api.ts
 import axios from "axios";
+import type { ArveDecisionResponse, ArvePricingAnalysis } from "./types/arve";
+import { getDealerDeviceLabel, getOrCreateDealerDeviceId } from "./utils/dealerDevice";
 
 // URL base del backend
 export const API_BASE_URL =
@@ -8,6 +10,17 @@ export const API_BASE_URL =
 // Client Axios base
 export const http = axios.create({
   baseURL: import.meta.env.VITE_API_URL || "http://localhost:4002/api",
+});
+
+// Ogni browser ASCARI invia un identificativo locale. Il backend lo usa solo
+// quando l'account è una concessionaria, per applicare il limite dispositivi.
+http.interceptors.request.use((config) => {
+  if (typeof window !== "undefined") {
+    config.headers = config.headers || {};
+    config.headers["X-Ascari-Device-Id"] = getOrCreateDealerDeviceId();
+    config.headers["X-Ascari-Device-Label"] = getDealerDeviceLabel();
+  }
+  return config;
 });
 
 // Ping
@@ -27,6 +40,52 @@ export async function createCar(data: any, token: string) {
   const res = await http.post("/cars", data, {
     headers: { Authorization: `Bearer ${token}` },
   });
+  return res.data;
+}
+
+// Analizza la nuova auto con ARVE
+export async function analyzeCarWithArve(
+  carId: number,
+  token: string
+): Promise<ArvePricingAnalysis> {
+  const res = await http.post(
+    `/arve/cars/${carId}/analyze`,
+    {},
+    {
+      headers: { Authorization: `Bearer ${token}` },
+      timeout: 35_000,
+    }
+  );
+
+  return res.data;
+}
+
+// Accetta i prezzi ARVE oppure conserva quelli originali
+export async function saveArvePricingDecision(
+  carId: number,
+  acceptSuggestedPrice: boolean,
+  token: string
+): Promise<ArveDecisionResponse> {
+  const res = await http.post(
+    `/arve/cars/${carId}/decision`,
+    { acceptSuggestedPrice },
+    {
+      headers: { Authorization: `Bearer ${token}` },
+    }
+  );
+
+  return res.data;
+}
+
+// Recupera l'ultima analisi ARVE della propria auto
+export async function getCarArveAnalysis(
+  carId: number,
+  token: string
+): Promise<ArvePricingAnalysis> {
+  const res = await http.get(`/arve/cars/${carId}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
   return res.data;
 }
 
@@ -152,5 +211,91 @@ export async function getCarQrStats(carId: number, token: string) {
     headers: { Authorization: `Bearer ${token}` },
   });
 
+  return res.data;
+}
+// =========================
+// CONCESSIONARIA / ABBONAMENTI
+// =========================
+
+export async function getDealerSubscription(token: string) {
+  const res = await http.get("/dealer-subscriptions/me", {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return res.data;
+}
+
+export async function createDealerSubscriptionCheckout(
+  plan: "STARTER" | "ADVANCED",
+  token: string
+) {
+  const res = await http.post(
+    "/dealer-subscriptions/checkout",
+    { plan },
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+  return res.data;
+}
+
+export async function confirmDealerSubscriptionCheckout(
+  sessionId: string,
+  token: string
+) {
+  const res = await http.post(
+    "/dealer-subscriptions/confirm-checkout",
+    { sessionId },
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+  return res.data;
+}
+
+export async function changeDealerSubscriptionPlan(
+  plan: "STARTER" | "ADVANCED",
+  token: string
+) {
+  const res = await http.post(
+    "/dealer-subscriptions/change-plan",
+    { plan },
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+  return res.data;
+}
+
+export async function createDealerSubscriptionPortal(token: string) {
+  const res = await http.post(
+    "/dealer-subscriptions/portal",
+    {},
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+  return res.data;
+}
+
+export async function getDealerSubscriptionStats(token: string) {
+  const res = await http.get("/dealer-subscriptions/stats", {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return res.data;
+}
+
+export async function getDealerDevices(token: string) {
+  const res = await http.get("/dealer-subscriptions/devices", {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return res.data;
+}
+
+export async function registerDealerDevice(
+  payload: { deviceId: string; label?: string | null; userAgent?: string | null },
+  token: string
+) {
+  const res = await http.post("/dealer-subscriptions/devices/register", payload, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return res.data;
+}
+
+export async function revokeDealerDevice(deviceId: string, token: string) {
+  const res = await http.delete(`/dealer-subscriptions/devices/${deviceId}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
   return res.data;
 }
