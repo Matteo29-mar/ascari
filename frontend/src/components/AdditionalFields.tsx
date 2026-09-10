@@ -1,5 +1,6 @@
 // src/components/AdditionalFields.tsx
 import React, { useState } from 'react';
+import CarColorPicker from './CarColorPicker/CarColorPicker';
 
 type AdditionalFieldsProps = {
   data: {
@@ -24,13 +25,23 @@ type AdditionalFieldsProps = {
     engine?: string;
     trimLevel?: string;
   }) => void;
+  transmissionRequired?: boolean;
+  transmissionError?: boolean;
 };
 
-export default function AdditionalFields({ data, setData }: AdditionalFieldsProps) {
-  const [open, setOpen] = useState(false);
+export default function AdditionalFields({
+  data,
+  setData,
+  transmissionRequired = false,
+  transmissionError = false,
+}: AdditionalFieldsProps) {
+  const [open, setOpen] = useState(transmissionRequired);
 
   return (
-    <section className="card" style={{ marginTop: 16 }}>
+    <section
+      className={`card ascari-additional-fields ${transmissionError ? 'ascari-section-error' : ''}`}
+      style={{ marginTop: 16 }}
+    >
       <div
         className="card-body"
         style={{ cursor: 'pointer', paddingBottom: open ? 0 : 12 }}
@@ -38,8 +49,10 @@ export default function AdditionalFields({ data, setData }: AdditionalFieldsProp
       >
         <div className="row space" style={{ alignItems: 'center' }}>
           <h3 style={{ margin: 0 }}>Informazioni aggiuntive</h3>
+
           <span className="muted" style={{ fontSize: 12 }}>
-            (facoltative) {open ? '▲' : '▼'}
+            (facoltative)
+            {open ? '▲' : '▼'}
           </span>
         </div>
       </div>
@@ -61,24 +74,9 @@ export default function AdditionalFields({ data, setData }: AdditionalFieldsProp
               onChange={(e) => setData({ ...data, trimLevel: e.target.value })}
             />
 
-            <input
-              className="input"
-              placeholder="Colore"
+            <CarColorPicker
               value={data.color || ''}
-              onChange={(e) => setData({ ...data, color: e.target.value })}
-            />
-
-            <input
-              className="input"
-              type="number"
-              placeholder="Prezzo (€)"
-              value={data.priceEur ?? ''}
-              onChange={(e) =>
-                setData({
-                  ...data,
-                  priceEur: e.target.value === '' ? '' : Number(e.target.value),
-                })
-              }
+              onChange={(color) => setData({ ...data, color })}
             />
 
             <input
@@ -88,14 +86,7 @@ export default function AdditionalFields({ data, setData }: AdditionalFieldsProp
               onChange={(e) => setData({ ...data, drivetrain: e.target.value })}
             />
 
-            <input
-              className="input"
-              placeholder="Cambio (es. Manuale, Automatico)"
-              value={data.transmission || ''}
-              onChange={(e) =>
-                setData({ ...data, transmission: e.target.value })
-              }
-            />
+        
 
             <input
               className="input"

@@ -492,3 +492,629 @@ cose da fare:
         mia officina ( distanza e calendario)
         resoconto perizie( con perizie dentro)
     - tasto dentro il mio garage carica perizie
+
+    
+update del 28/01/2026
+oggi siamo andati in test, ci sono stati tanti tira e molla,
+sono stati aggiunti i docker file edgli ambienti (B e F) è stao creato il docker compose per tirare su lo stack con:
+db, F, B e caddy ( per il reverse proxy)
+sono stati cambiati i puntamenti degli env e una roba del caroption che non andava nel backend ma nel frontend
+
+SAREBBE NECESSARIO AVERE LA VERSIONE LOCALE FUNZIONANTE, QUINDI SAREBBE DA FARE UN BRANCH NUOVO LOCAL COPIARE DA MAIN E PORTARE 
+AL COMMIT ADD MAP V2 CON TUTTE LE ROBE LOCALI funzionanti
+
+invece il branch map diventa il test
+
+test tempo
+elimino la macchina tempo:19.42 secondi
+dettaglio auto tempo:4.96 secondi
+far vedere una macchina sulla mappa :4.87 secondi
+carico il mio garage:6:15 secondi
+
+sal 31/01/2026
+documnenti perizia danno errori
+tempo caricamento troppo lungo
+
+
+update 1/02/2026
+fatte alcune modifiche lato codice, c'era da normalizzare dei file che si spaccavano.
+Il problema principale era questo:
+il backend a volte non restituiva un array puro, ma un oggetto che conteneva l’array
+Il frontend però dava per scontato di ricevere sempre un array e faceva subito .map() / .filter() → crash e schermata nera.
+In più, in alcuni punti accedevi a proprietà non garantite (messages[0], .length) senza controllare se esistevano → altro TypeError.
+Soluzione:
+normalizzare sempre le risposte API
+usare fallback sicuri ([], ?., Array.isArray)
+Così l’app non crasha più anche se il backend risponde in modo incoerente.
+
+punti da aggiornare:
+- nuove marche
+- carico documenti delle perizie
+- tempo 
+- mettere nella chat il nome dell'utente vero
+
+-----------------------------
+update 02/02/2026
+aggiunto periziatore
+è stata aggiunto la sezione periziatore, come avevo scritto tempo fa è un'integrazione a tutto il sistema.
+loggatura con Clerck, entri come utente normale poi ti registri come periziatore, una volta registrato quella email
+diventa periziatore dentro il sistema ascari e ogni volta che accede va subito nella pagina periziatore.
+viene creato un form di compilazione in fase di registrazione, poi si trova in un'altra pagina.
+La pagina principale è la mia officina dove ha i dati dell'officina e il raggio di azione e il calendario per dare le disponibilità.
+Bozza quella pagina ma funzionante. 
+Ci sono altre pagine ma ora non sono integrate
+creato nella pagina del mio garage di un'utente normale il tasto contatta periziatore per il match come avevo scritto.
+Manca effettivamente l'aggancio tra la card auto e il periziatore disponibile anche se viene mandato il messaggio.
+
+Sono da finire:
+- design periziatore
+- integrazione tra card auto e orario disponibilità periziatore
+- pagina perizie ricevute
+- chat periziatore e resoconto perizie
+
+installato componente per il calendario
+npm i @fullcalendar/react @fullcalendar/daygrid @fullcalendar/timegrid @fullcalendar/interaction
+
+--------------------
+update 21/02/2026
+1. fatto vedere la perizia che viene ricevuta, eliminato una rotta di sovrapposizione e inspections.ts e tenuto solo la 
+    rotta di inspector.ts nel index.ts e creato nel inspectordashboard.tsx la visualizzazione
+2. Implementazione del tasto conferma e sistema chat tra periziztore e cliente e il messaggio automatico
+
+da migliorare
+1. auto già in contatto con un periziatore errore 404(stai cercando di contattare un periziatore).
+    Penso che sia per associazione tra periziatore e cliente, ma devo investigare il problema sta nel my-garage
+2. avere possibilità di modificare orario di perizia oppure lasciare la chat.
+    sarebbe meglio avere la possibilità di cambiare orario di perizia o tra 
+
+
+--------------------
+update 24/06/2026
+1. fatto un po di modifiche e risolto un po di errori:
+1️⃣Problema: Errore 404 – Richiesta fallita su MyGarage. La pagina MyGarage effettuava chiamate a endpoint non coerenti con le route backend (path errato o non registrato), generando 404.
+Soluzione: Allineamento delle route frontend con quelle realmente esposte dal backend e verifica della registrazione corretta dei router Express.
+2️⃣Problema: Errore 400 – Risorse non trovate / ID non valido Richieste del tipo /api/chat/undefined o ID non numerici generavano errori 400 o crash Prisma (id mancante/NaN).
+Soluzione:Validazione preventiva degli ID lato backend. Controllo e sanitizzazione degli ID lato frontend prima di chiamare le API. Blocco delle chiamate se il parametro non è valido.
+3️⃣Problema: Calendario – Miglioramento UI e colori Gli slot nel calendario non avevano differenziazione visiva chiara e non comunicavano bene lo stato.
+Soluzione:Introduzione di colori e miglioramento della resa visiva degli eventi FullCalendar per distinguere meglio disponibilità e stato.
+4️⃣Problemi: Problemi strutturali in chat.ts (backend)Mancata validazione dell’ID chat. Prisma crashava su findUnique con ID invalido. Mancata gestione coerente dello stato CANCELLED. Chat visibili anche quando non dovevano esserlo.
+Soluzione:Funzione centralizzata per parsing sicuro dell’ID. Blocco apertura chat al periziatore se perizia annullata. Filtro in lista chat per nascondere chat CANCELLED al periziatore. Migliore gestione permessi buyer/seller.
+5️⃣ Problemi in chat.tsx (frontend pagina chat) Polling attivo anche con ID non valido. Chiamate ripetute verso /chat/undefined. Mancata gestione elegante degli errori 403/404.
+Soluzione:Validazione preventiva del chatId. Blocco polling se ID non valido. Redirect automatico alla lista in caso di errore. Gestione popup per chat cancellate.
+6️⃣ Problemi in chatlist.tsx La lista chat generava richieste con ID undefined e link non validi.
+Soluzione:Pulizia e normalizzazione del payload backend.Filtro hard sulle chat senza ID valido. Rimozione di qualsiasi chiamata diretta a /chat/:id nella lista.
+7️⃣ Problema:Dopo annullamento perizia, la chat rimaneva visibile a entrambi o non era coerente con le regole di business.
+Soluzione:Regola: chat CANCELLED visibile solo al venditore. Blocco apertura e invio messaggi per il periziatore. Introduzione endpoint DELETE per eliminazione manuale. Popup lato venditore per gestione eliminazione.
+
+
+cose da migliorare:
+1. continuare a testare applicativo
+2. controllare carico e scarico pdf sia in test che in LOCALE
+3. incominciare a trovare soluzione per rendere immagini più leggere
+4. sistemare grafica di alcune cose
+5. far apparire i nomi o email non nomi strani nelle chat oppure nelle proposte
+6. rendere più intelligente il calendario
+
+--------------------
+update 26/02/2026
+1. aggiunto un di modelli e march edi auto dentro ascari, sono arrivato alla jaguar
+
+da migliorare
+1. al posto di scrivere il modello lo selezioni una volta scelta la marca come funziona per la mappa 
+
+
+------------------
+SAL 27/02/2026
+1. se c'è un like non posso eliminare auto, risolvere propetario deve eliminare auto in tranquillità
+2. nessun match proporre alternativa automatica
+3. mettere almeno 6 foto di carosello
+
+----------------
+update 03/03/2026
+1. tendina modello auto da selezionare al posto di scrivere
+2. modificato schema db per permettere di eliminare auto con like attivi da parte del proprietario,con un cascade sulla delete 
+    dell like, invece con offerte e perizie attive lascio il vincolo, perchè si possonon eliminare le offerte e devi attendere
+    il finire della perizia per "sbloccare auto"
+3. adesso si vedono le mail e i nomi veri quando ti arriva un'offerta e apri la chat con un utente e non più fittizzi. toccato il file
+    authUser.ts, chat.tsx 
+4. aggiunto marche e modelli da jaguar a mazda
+
+da migliorare/finire
+1. finire aggiunta marche e modelli
+2. creare numerino notifica sulla chat come per offerte 
+3. nessun match proporre alternativa automatica
+4. mettere almeno 6 foto di carosello
+5. creare resoconto periziatore 
+
+
+-------------------------
+update 11/03/2026
+1. creato resoconto per visualizzare le perizie fatte da lperiziatore, con nuovo va subito in associazione all'auto accettata, crea un nuovo resoconto, quando finisce, scarica il pdf, c'è in archivio
+   può eliminare, riscaricare e manda in modo automatico tramite il match i dati all'auto del vednitore, quindi il venditore non deve perdere tempo a caricare la perizia perchè
+   ci pensa in modo automatico il sistema.
+ installato dipendenze
+    npm install pdfkit e npm install -D @types/pdfkit
+ creato un nuovo file inspectorReports.tsx qui ci sono le funzioni frontend per fare tutte le funzionalità esempio salva, elimina, crea report eccetera...
+                      inspecrReportDEtail.tsx frontend per avere i dettagli del report creato 
+                      inspectoreport.ts backedn rotte API per creare, visualizzare il report ed aggangiarsi alle altre rotte 
+                      buildinspection.ts è una libresaria condivisa per i pdf creati al volo e farla arrivare al dettaglio auto, utile se ci sono altre cose per far scaricare pdf
+ modificato il main.tsx per inserire i blocchi route delle due nuove pagine frontend create 
+               index.ts inserito le rotte app.use per redigere il traffico.
+               schema.prisma modificato per permettere le varie conenssioni con il resoconto
+               cars.ts modificato la get del download perizia prima si bloccava per vecchia logica, ora accetta la creazione del pdf al volo tramite lib, che recupera dati dal pdf creato dal periziatore
+
+
+da migliorare
+1. ho notato che quando crea il report il periziatore, manda subito il pdf al dettaglio auto di chi vende( interessante) ma 
+    da un problema perchè poi non riesco a scaricare il pdf, migliorare questa funzionalità. Da valutare se lasciare che 
+    sia il periziatore in automatico a mettere la perizia sull'auto oppure scaricarla ed in un secondo momento utente fa upload
+    come ha sempre fatto
+2. finire aggiunta marche e modelli
+3. creare numerino notifica sulla chat come per offerte 
+4. nessun match proporre alternativa automatica
+5. mettere almeno 6 foto di carosello
+
+
+------------
+sal 13/03/2026
+da migliorare
+1. possibilità di fare foto 
+2. rimuovere blocco scarica perizia verso altri utenti.
+
+--------------------
+update 18/03/2026
+da fare
+1. correggere blocco scarico perizie altri utenti
+2. aggiungere le altre marche
+
+resoconto
+1. corretto blocco
+2. aggiunte tutte le marche e modelli
+3. migliorata grafica di alcuni pop up
+4. test funzionamento match periziatori, fatto test con due periziatori uno a Novara e uno a Vercelli, auto di Vercelli e a preso 
+    officina più vicina ovvero quella di vercelli.
+
+da migliorare
+1. ho fatto un test e se ci sono due periziatori di due città diverse NO e VC.
+    caso 1. venditore mette data x ma è città VC, ma periziatore città VC ha disponibilità Y ma perziatore città NO ha disponibilità x
+            da nessun match, errato qui è da sistemare, quello che noi vogliamo è dare un paio di tentativi.
+            primo tentativo, iniziale venditore mette data e ora se trova match vuol dire che nella città VC c'è disponibile alla data
+                             x un periziatore, va bene.
+            secondo tentativo, messaggio non ho trovato nessuno alla tua data, ma ho trovato qualcuno nella tua città ad un'altro orario disponibile, accetti o annulli. 
+                                se accetta automaticamente cambia dal venditore e va direttamente al periziatore
+            terzo tentativo, non trova nessuno in città a quella data, propone di cambiare data e di allargare il raggio di azione 
+                            con una barra per il raggio dal punto dell'auto per trovare qualcuno, se trova manda a quel periziatore
+                            che ha disponibilità
+            tentivo fallito, pop up nessun match, riprova in altre date e ricomincia dal primo tenttivo con una nuova immisione
+
+-------------------
+update 19/03/2026
+obiettivi
+1. sistemare il sistema di match alternativo
+
+resoconto
+1. costruito il sistema di match alternativo con alternative automatiche 
+
+
+----------------------
+sal 20/03/2026
+1. dopo un paio di tentativi non permettere più alternative di perizie
+2. far uscire gli altri periziatori
+
+----------------------
+update 24/03/2026
+1. portare in test applicativo
+
+note 
+non porto le modifiche del match le porterò successivamente a questa crazione del nuovo ambiente di test
+
+
+------------------
+sal 27/03/2026
+migliorie
+1. numero notifiche sulla chat @
+2. pop up miglioramenti @
+4. modifica sezione chat, ovvero migliorare scrittura ( esempio a capo da invio) @
+5. indirizzi, mentre scrivi indirizzo che esca il suggerimento @
+6. riquadro rosso sui campi mancanti @
+7. indirizzo officina @
+8. modifica perizia da fare, esempio sui dati carazzorie aggiungere le foto 
+9. migliorare view da mobile @
+
+---------------
+update 28/03/2026
+1. migliorata view sul mobile messi gli hamburger per lo schermo più piccolo e migliorata view sulla mappa ( 9)
+2. migliorato inserimento indirizzi in fase di compilazione per post e update (5)
+3. aggiunte le notifiche sulle chat nuove (1)
+
+
+---------------
+update 01/04/2026
+1. pop up migliorati(2) dashboard periziatore, cardetail, inspectorworkshop per il periziatore
+2. inserito indirizzo dell'officina nel messaggio automatico per la perizia, con link a google maps (7)
+3. migliorata la sezione chat (4) esempio se clicchi invio non invia ma va a capo, devi cliccare il tasto invio e se non hai scritto nulla 
+    non invia niente.
+4. inserito i riquadri rossi in caso di dimenticanza, andato in bozza, mettendo il pop up che ti sei dimenticato i campi 
+    e cerchiando di rosso(6)
+
+-------------------
+update 14/04/2026
+1. gestire per pagine le card
+
+------------------
+update 21/04/2026
+1. incominciato a vedere come integrare sistema di pagamento, pensiamo di usare stripe connect modalità marketplace
+
+resconto giornata
+1. integrato stripe ad ascari in modalità test. 
+    Con stripe, in particolare stripe connect. diamo la possibilità ad ascari di gestire pagamenti.
+    Il flusso è molto semplice. Creazione account di stripe inserire i token sia in env backend e frontend.
+    Utente loggato con clerk può gestire in una pagina dedicata il pagamento e i dati del pagamento.
+    Sulla chat può decidere lato venditore si può impostare importo con netto e commissione ascari e lato compratore tasto paga ora per pagare, in cui utente inseririsce
+    i dati e paga. 
+    Ora in fase di test, abbiamo fatto un test con carta e importo fac-simile fornito da stripe e pare funzionare
+
+-----------------
+update 23/04/2026
+1. sistemare grafica filtri avanzati ed inserire nuove funzionalità di filtraggio
+2. pensare ad un pop up dopo aver fatto la vendita del veicolo a chi sarebbe interesato, finchè il vecchio venditore non elimina il veicolo
+
+
+--------------
+sal 24/04/2026
+1. inserire filtri colore e cambio CHECK FATTO
+2. trasmissione(cambio) parametro deve obliggatorio  CHACK FATTO
+3. bug chat, clicco invio e invia il mesaggio risolvere
+4. condizione assoluta perizia, quando riceve offerta deve partire flusso perizia è li la roba innnovativa  CHECK FATTO
+5. sezione storico venditore e compratore
+6. alert perizia per periziare auto
+7. calcolatore vendita in carnew e carupdate per capire il prezzo
+
+--------------
+update 29/04/2026
+1. cambio inserito come obbligatorio 
+2. impostato filtro cambio, colore non ritengo sia NECESSARIO per il momento
+
+--------------
+update 30/04/2026
+1. creato la condizione che se arriva offerta auto e auto non è in stato di perizia sì, utente è costretto a fare la perizia automaticamente.
+    questo è un aggiunta di flusso, non va a sostituire carico manuale della perizia e contatta perizia dal garage.
+2. grafica del register periziatore migliorata
+3. creazione dello storico delle auto vendute o comprate una volta fatto pagamento
+4. creazione del calcolatore sulle offerte
+
+--------------
+sal 01/05/2026
+1. inseririre calcolatore reale sulla chat
+2. filtro avanzato da sistemare sul cambio, non collegato la searchbar con le car( guardare file car.ts sulle get)
+3. roba cloud per officina per gestire archivi 
+
+
+---------------
+update 06/05/2026
+1. sistemato filtro avanzato sul cambio, non passava la get
+2. modificato una roba grafica sulla grandezza di un riquadro
+3. modificato lo storico ora si vede sia per il venditore e compratore, appare la visualizzazione e lo scarico del documento
+
+miglioramenti da fare
+1. una volta venduta auto e creato lo storico, l'auto deve essere rimossa dal vecchio venditore manualmente in caso non succedesse
+    dopo 5 giorni dalla vendita elimina il veicolo automaticamente con annesso chat e offerte su quel veicolo, tranne quello che è 
+    presente nello storico, in pratica una sorta di eliminazione grafica e di possesso, ma a livello di dati no rimangono salvati.
+    In caso mentre a vednita conclusa un altro vuole l'auto deve apparire una pop up in stile ascari con scritto " ci dispiace auto
+    marca XXXX e modello XXXx stato venduto, ecco 3 suggerimenti simili o torna indietro. I suggerimenti con le 3 auto praticamnete
+    prende la marca e il modello e gli fa vedere 3 card di quel modello, ovvimamente diverse da quella che sta vedendo ora perchè venduta
+    
+
+
+
+sal 08/05/2026
+1. aggiustare notifica offerta
+2. venditore nel caso si trovi in un'altra città del periziatore no nsa dove sta mandando o da dove arriva il periziatore
+3. calcolatore nella chat 
+4. per il post pagamento, ascari prende in carico eliminazione visuale della card ( 2-5 giorni) con un etichetta "rimosso a breve " in rosso alto a destra
+    utente non rimuove auto, il tempo è fatto per eventuali chat aperte con il nuovo acquirente, esempio ci troviamo il giorno x 
+    per darti auto oppure ci incontriamo per il trapasso...
+    se altro utente è sopra card, e fa un'azione appare popup con scritto" ci dispiace auto venduta, ti proponiamo 3 simili" e con tasto annullamento
+    auto scompare nei disponibili subito appena viene emesso lo storico. 
+    le chat una volta eliminata la card vengono eliminate di conseguenza
+    e chat aperte con altri compratori che non sono andati a buon fine vengono eliminati automaticamente senza avviso.
+    
+update 13/05/2026
+1. Dopo pagamento riuscito, l’auto viene marcata venduta, rimossa dal catalogo, mantenuta nel garage con badge “Venduta · rimozione a breve” e salvata nello storico.
+Abbiamo aggiunto job automatico di cleanup dopo 5 giorni, endpoint availability e popup con 3 alternative se un utente tenta di interagire con un’auto appena venduta.
+Chat e offerte restano utilizzabili solo nel periodo temporaneo, poi vengono nascoste senza cancellare i dati dal database.
+Infine abbiamo ottimizzato Cars.tsx per filtrare le auto vendute e sistemare il caricamento della lista catalogo.
+
+update 14/05/2026
+1. allestimento nuova architettura
+2. test di funzionamento 
+3. portare patch tecniche
+    1. carosello che torna indietro
+    2. notifica delle offerte
+
+
+update 20/05/2026
+1. modificare grandezza chiamate api per restituire immagini 
+2. predisporre bucket s3 per caricare sopra le immagini
+
+resconto giornata
+1. spostato il peso delle immagini fuori dal database e alleggerito le API GET
+Prima il DB conteneva immagini in base64, quindi dentro coverUrl e/o photos avevi stringhe enormi tipo tutta l'immagini
+questo rendeva le API pesantissime, ora il DB non salva più immagini intera salva solo URL s3
+Prima le GET caricavano troppi dati dal DB, perché usavano spesso include o restituivano tutto il modello Car.
+
+2. riscontrato problema con mapbox risolvere
+3. inserire il qr code dinamico con la creazione della card
+4. sistemare carosello
+
+sal 23/05/2026
+1. se metti qr code scontistica e generazione qr code automatico(qr code + cornice ascari)
+2. modificare pop up e metodo inserimento data 
+3. sistemare mapbox 
+
+update 27/05/2026
+1. sistemato mapbox c'era un problema sul recuperare le info di lat e log dalla funzione buildCarCardSelect
+2. sistemato il carosello, il comportamento è dentro scrollTo() perché si sta facendo il clamp e non permette di tornare all'inizio
+    ora con la modifica "loop" moderno 
+
+
+sal 29/05/2026
+1. pagamento periziatore, con stripe account + tasto cashout una volta finito la perizia e nella sezione resoconto
+2. prezzo fisso del periziatore 1 e inserire nel calcolatore della card.
+3. creazione qr-code dinamico dell'auto e verifica con foto caricata del qr-code applicato sull'auto per lo sconto
+4. ispezionare meglio stripe sezione pagamenti 
+5. iniziare a vedere per strategia marketing/social
+
+
+update 31/05/2026
+1. pagamento periziatore 
+    Abbiamo implementato il flusso cashout periziatore: ogni resoconto ora può generare una richiesta da 120€ tramite Stripe Connect,
+    con onboarding Stripe se l’account non è ancora abilitato.
+    Abbiamo aggiunto anche l’area pagamenti periziatore, lo storico delle transazioni cashout e il blocco per evitare doppi cashout sullo stesso resoconto.
+2. prezzo fisso
+    Abbiamo introdotto una nuova voce economica chiamata Commissione Periziatore (120 €) nel flusso di vendita ASCARI. 
+    Questa commissione viene sottratta dal prezzo lordo insieme alla commissione Ascari del 10%, 
+    ma solo se l'auto non è già periziata (isPeriziata = false); se la perizia esiste già, il costo viene automaticamente azzerato.
+    La modifica è stata applicata sia nelle schermate di creazione/modifica veicolo sia nella configurazione pagamento e chat tra acquirente e venditore. 
+    Inoltre abbiamo aggiornato backend, database e API affinché il valore inspectionFeeEur venga salvato, 
+    restituito correttamente dalla GET /chat/:id e mostrato nel riepilogo economico della vendita.
+
+
+sal 05/06/2026
+1. il flag periziata SI/NO non funziona correttamente,  perizia non viene caricata dal periziatore in automatico e il flag non 
+si trasforma da NO a Si, stessa cosa se carico manualmente
+2. visionare meglio tasti perizia caricata perchè compratore scarica la perizia, ma il venditore gli dice di caricarla e di contattare il periziatore
+3. slegare il cashout effettivo con il costo periziatore della vendita 
+4. trovare un modo più semplice per validare qr code su immagine 
+
+update 10/06/2026
+1. sistemato lo stato flag si e no adesso se viene effettuata perizia caricata automaticamente
+2. anche il sistema tasti perizia tornato a posto
+3. slegato cashout effettivo da costo di vendita
+4. vedere al sal se ha senso far fare la validazione automatica, manuale o togliere e tenere solo generazione qr code e poi validazione farlo più avanti
+
+
+update 16/06/2026
+1. installazione nuove dipendenze npm install cookie-parser e npm install -D @types/cookie-parser
+2. portato in locale la generazione del qr-code con le statistiche
+    prossimo step quello di portare in test.
+
+
+update 17/06/2026
+1. tenere traccia url .env frontend è questo VITE_API_URL=https://api.myascari.com/api
+2. qr-code su test non funziona, portare modifiche . Portate le modifiche in test segno gli step per portare modifiche 
+    1. accendere rds
+    2. accendere ec2 backend
+    3. aspettare il verde
+    4. avere già pushato su branch map
+    5. pull da git su ec2 
+    6. per frontend bisogna npm build nella cartella frontend e upload su s3  
+        aws s3 sync dist/ s3://NOME_BUCKET_FRONTEND --delete
+        dopo s3 invalidare cache cloudfront 
+        aws cloudfront create-invalidation --distribution-id ID_DISTRIBUZIONE --paths "/*"
+    7. down compose, build nuova e up -d del compose backend
+    8. se ci sono cambiamenti lato rds fare su ec2 questi comandi
+        docker compose run --rm backend npx prisma migrate deploy
+        docker compose run --rm backend npx prisma generate
+        docker compose up -d backend
+
+update 18/06/2026
+1. lato test funziona, implementare un qr-code più identificativo lato ascari
+2. mi dvo ricordare che nel .env devo inserire VITE_API_URL=http://localhost:4002/api
+
+
+sal 20/06/2026
+1. dalla chat tornare indietro alla card dettaglio auto 
+2. perizia -> trovare sistema più carino per postare
+3. fare flussi testuali e flow chart 
+4. parlare statuto
+
+
+update 24/06/2026
+1. creato tasto dettaglio auto nella chat 
+
+
+update 08/07/2026
+1. dopo una serie di chiacchierate, siamo giusti alla conclusione di lanciare ascari ad novembre
+    stop funzionalità nuove, tutto su marketing, risoluzione bug e usabilità
+2. idea di inserire video che facciano capire cosa è ascari per far rimanere il pubblico
+    slide1- Cinematic shot of a luxury sports car driving fast on a scenic mountain road, golden hour, smooth camera tracking, premium automotive commercial style, realistic, no text, 5 seconds, 16:9
+    slide2- Professional mechanic inspecting a used car in a clean modern workshop, checking details with a tablet and flashlight, premium trustworthy atmosphere, cinematic lighting, realistic, no text, 5 seconds, 16:9
+    slide3- Close-up cinematic shot of two people shaking hands and handing over car keys, modern dealership or elegant outdoor setting, trust and satisfaction mood, realistic, premium commercial style, no text, 5 seconds, 16:9
+
+
+update 23/07/2026
+1. sistemato un problema nella risoluzione della mappa, era impostato un limite di una manciata di auto dentro al raggio e non c'era verso 
+    di aumentare il numero di auto, risolto togliendo dei limiti aggiunti per errore nella rotta API GET /api/cars/nearby
+2. se ci sono delle modifiche da fare far ribuildare anche frontend se è una modifica solo del backend
+    docker compose down
+    docker compose up -d --build --force-recreate è andata in errore dal frontend però la prima parte di nuova build sul backend è
+    andata bene quindi può aver fatto, magari sarebbe meglio fare docker compose up -d --build --force-recreate backend
+3. stiamo pensando di configura invio email quando uno fa un'offerta un compratore al venditore
+     usiamo tool resend poi useremo aws SES in futuro
+        Compratore invia offerta
+            ↓
+    POST /api/offers
+            ↓
+    Offerta salvata nel database
+            ↓
+    Recupero email venditore dal database
+            ↓
+    Invio email tramite Resend
+            ↓
+    Venditore apre:
+    https://myascari.com/offers?offerId=123
+            ↓
+    Login Clerk, se necessario
+            ↓
+    Ascari evidenzia la specifica offerta
+
+    messo ne l.env del backend 
+    FRONTEND_URL=http://localhost:5173  -> questo penso diventi poi myascari.com
+    EMAIL_NOTIFICATIONS_ENABLED=true
+    RESEND_API_KEY=re_BZMvseTJ_Pnecg4Wyi27AzSajbY1NQaag
+    EMAIL_FROM=Ascari <onboarding@resend.dev> -> diventa notifiche@myascari.com
+
+    creato nuovo sistema email completato e pushato
+    ricordarsi che quando si builda il frontend spostare e fare switch
+    VITE_API_URL=https://api.myascari.com/api
+    #VITE_API_URL=http://localhost:4002/api
+
+    nuova stringa db fatta non cancellare .env contenuto di backend
+
+sal 24/07/2026
+1. tasto qr code in basso più grande 
+2. perizia più grande simile a spec tecniche
+3. aggiustare colore mod light 
+4. aggiungere una quarta slide sul qr code e sull' importanza dell'offline
+5. investigare su inidirizzo e città
+6. tasto nuovo con carica auto più grande e in altra posizione 
+
+
+update 29/07/2026
+1. creato la prima versione di ARVE, creato a partire da i documenti fatti per tooldech della demo, ho creato un documento
+    per visionare tutto. Possiamo dire che è AI (token chat gpt) + ascari web app +  popolazione dataset privato
+    funziona che quando si crea una auto, salva, creazione auto e poi valutazione o con dataset se presenti dati o con chat gpt
+    con token e suggerimento puoi scegliere o meno di accettare
+2. ho notato che se non sei loggato non vedi i prezzi, vorrei che apparisse il tasto offerta con i 3 prezzi ma una volta che clicchi
+    ti fa fare la login o la registrazione, una volta che ti sei loggato ti riporta al dettaglio auto per continuare la richiesta
+    di offerta
+
+sal 31/07/2026
+1. confronto prezzo ARVE
+    lista auto ( preparata a mano da Mattia) + dataset privato ascari + AI (token openAI) che ragiona, interpreta e fornisce prezzo utileù
+2. sviluppare tasto condivisi 
+3. colore mappa da cambiare da nero a bianco
+
+03/08/2026
+1. aggiustato il mod light 
+2. aggiustato mod light per la mappa ed impostato una serie di modidche lato mappa, scelta di diversi tipi di mappa
+3. creato il tasto condividi con vari social
+4. impostato il cambio del bottone da +nuovo a carica la tua nuova auto
+5. modificata la visuale da mobile ora quando si entra vedi subito il carica auto e le card, un tasto avanzate ha tutto dentro
+    vicino a me, filtri e altro
+6. inserito il nuovo video con scritta nello slideshow ora ci sono 4 slide
+
+04/08/2026
+1. inserito palette colore al posto di scriverlo 
+
+09/08/2026
+1. creazione della sezione concessionario
+    Il profilo concessionario entra come altro utente, come è stato fatto per il periziatore he quel profilo che si registra 
+    diventa solo concessionario. Cliccato tasto concessionario, compila i dati come il periziatore con attività e altri dati,
+    poi una volta creato il profilo la vista che vede è identica al profilo normale, quindi vede le auto, fa offerte, 
+    riceve offerte, filtra, la mappa e altro. Solo ha una cosa diversa il suo garage le auto che posta sono visibili 
+    alle persone normali. Quindi se un utente normale cerca un'auto va sul dettaglio auto può vedere il link con il nome 
+    della concessionaria e portarlo al garage delle auto della concessionario, nella vista dell'utente normale; 
+    oltre le auto può vedere le informazioni della concessionaria: indirizzo copiabile da inserire su maps, numero di auto 
+    in vendita, contatti, logo e nome della concessionaria e tutte le sue autovetture ( vedere foto due con link). 
+    In più vorrei fare una modifica alla mappa, adesso i puntini sono verdi, ma vorrei una legenda che mostra la 
+    differenza tra puntini verdi =auto private e puntini rossi = auto di concessionarie.
+
+update 10/08/2026
+1. creazione del sistema di abbonamento con stripe connect ( come per i pagamenti collegati sull'account) 
+    per le concessionarie, il nocciolo è una serie di 3 abbonamenti 5 auto nel piano free( automatico), poi piano top 10/15 auto
+    con statistiche costo 25 euro al mese, piano premium auto illimitate da vendere, con statistiche costo 50 euro al mese. 
+    con una sezione nella icona del profilo i miei piani dove vedi i piani che uno può sottoscrivere 
+
+update 11/08/2026
+1. visionare il codice che è stato scritto
+	- nei .json -> aggiornate le versioni di stripe
+	- prisma, inseriti nuovi enum per gli abbonamenti, nuova classe dealerprofile(concessionario) e altro
+	- index.ts è stato inserito il webhook(?) per abbonamento dealer
+	- creato nuovo file dealerplans per i piani dell'abbonamento funzione che spiega
+	- aggiunte funzionalità varie in cars per le sospensioni dei piani free
+	- nuovo file per il concessionario con le rotte nuove
+2. esegure dei test locali
+    - creazione auto nuova, visionare arve, mappa e campi sulla mappa
+    - concessionario, superare il limite auto free, vedere mappa, fare un piano pagamento, vendere auto
+    - comprare auto
+    - concessionario fare il flusso e richiedere il cashout
+    - vendere un auto
+3. creato una modifica nel periziatore inseririmento logo, modificato pop up per la disponibilità e creato un nuovo modo per salvare le disponibilià per gli slot disponibili
+    ovvero fascia oraria, giorno orario e settimana intera
+
+
+sal 14/08/2026
+1. vedere come fare un multi-pubblicatore(DMS) per vendere auto tramite gestionale fuori ascari, concessionario preparara tot auto
+    e tramite questo software pubblica le auto su tot siti di vendita, forcesales e manager car( questi sono i pubblicatori)
+2. rivedere abbonamento per FREE, TOP, PREMIUM. Eliminare FREE e vedere TOP(50 euro con auto illimitate) E PREMIUM(125 euro auto
+    illimitate, statistiche e arve)
+3. vedere sottoaccount per le concessionarie o multi dispositivo
+
+update 19/08/2026
+1. Inserimento del file excel di ARVE in ascari e modifica della logica, il flusso funziona Così
+    Auto caricata su ASCARI
+            ↓
+    Dati card + 3 prezzi utente
+            ↓
+    Base prezzi Excel
+            +
+    Dataset storico ASCARI
+            ↓
+    Matching per
+    marca/modello/alimentazione
+    anno/km/allestimento
+            ↓
+    Pricing Engine
+            ↓
+    OpenAI
+            ↓
+    3 prezzi ARVE
+    + fascia di mercato
+    + confidenza
+    + spiegazione
+            ↓
+    Salvataggio analisi
+
+    eseguito il primo test del nuovo arve sembra dare buoni risultato ha suggerito un prezzo dell excel
+
+update 20/08/2026
+1. quando una concessionaria si iscrive viene tolto il piano FREE, cambiano i piani con
+STARTER 50 euro al mese e dentro hai auto illimitate, gestione fino a 10 dispositivi collegati
+ADVANCED 125 euro al mese e dentro hai auto illimitate, gestione fino a 20 dispositivi collegati e statistiche per ogni auto 
+2. la legenda della mappa con il colore dei pallini delle auto private e del concessionario non lo voglio in basso ma in alto nella barra
+3. le statistiche delle auto se sono un concessionario, le vedo se vado nella sezione "il mio garage" invece se sono un concessionario e ho scelto il piano starter non devo vederle
+4. vorrei cambiare il modo in cui il periziatore fa la perizia al posto di scrivere ogni volta, ti invio un'immagine che di un'auto alto e di lato in cui ci saranno dei punti dove il periziatore clicca e da un voto da 1 a 5 più e basso e il punteggio vuol dire non buono 1= da buttare 2= danneggiato 3= normale 4= buone condizioni 5 = come nuovo. Su carozzeria, interni, mortore, meccanica, pneumatici, elettronica e test drive. Per ogni punto da un punteggio e può scrivere una nota per appuntare dei particolari. Infine il parere finale e come facoltativo un parere sulla valutazione dell'auto. 
+5. Imbastiamo una sezione nel footer della home delle pagine anche se sei loggato e no in tutte le pagine al fondo. 
+Un recap dei link divisi per :
+società		servizi			area clienti
+chi siamo	mappa delle auto	login
+informazioni	filtri			registrati come periziatore
+contatti	marchi e modelli	registrati come concessionaria
+
+per registrati come periziatore/concessionaria apre la sezione di login classica con clerk, una volta effettuato la login apre subito la sezione per la registrazione del periziatore o concessionario
+6. solo per le concessionarie, creare la sezione recensioni(solo per i privati loggati) e il rating che viene dato 
+
+resoconto
+1. funziona devo fare il test sul abbonamneto con carta prova
+2. legenda spostata ma ora non vedo le auto del concessionario se non faccio abbonamento dealer 
+3. da testare
+4. cambiato il modo in cui si fanno le perizie, con i punti e lo schema auto
+5. footer funziona da migliorare 
+
+
+sal 21/08/2026
+1. possibilità di inserimento excel simile prezzo di ritiro per il concessionario (da Mattia) inserire nella parte del concessionario quando posta usato, non nel privato 
+    concessionario ( 4 prezzi incluso nel 125 euro ) e privato 3 prezzi 
+2. periziatore possibilià carica foto con danni dentro il pdf del resoconto.

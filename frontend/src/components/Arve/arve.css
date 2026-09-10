@@ -1,0 +1,341 @@
+.arve-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(2, 8, 16, 0.82);
+  backdrop-filter: blur(8px);
+}
+
+.arve-modal,
+.arve-loading-card {
+  width: min(820px, 100%);
+  max-height: calc(100vh - 40px);
+  overflow: auto;
+  border: 1px solid rgba(73, 214, 216, 0.28);
+  border-radius: 24px;
+  background:
+    radial-gradient(circle at 90% 0%, rgba(23, 175, 209, 0.12), transparent 34%),
+    #0d141c;
+  color: #f7fbff;
+  box-shadow: 0 28px 90px rgba(0, 0, 0, 0.45);
+}
+
+.arve-modal {
+  padding: 24px;
+}
+
+.arve-modal__header,
+.arve-loading-card {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+
+.arve-modal__icon,
+.arve-loading-card__icon {
+  width: 92px;
+  height: 92px;
+  flex: 0 0 auto;
+  border: 2px solid rgba(78, 230, 225, 0.42);
+  border-radius: 24px;
+  object-fit: cover;
+  box-shadow: 0 0 28px rgba(60, 226, 224, 0.18);
+}
+
+.arve-modal__header h2,
+.arve-loading-card h2 {
+  margin: 4px 0 6px;
+  font-size: clamp(1.35rem, 3vw, 2rem);
+}
+
+.arve-modal__header p,
+.arve-loading-card p,
+.arve-explanation p {
+  margin: 0;
+  color: #b8c5d1;
+  line-height: 1.55;
+}
+
+.arve-kicker {
+  color: #4be0dc;
+  font-size: 0.76rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.arve-badge-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 18px 0;
+}
+
+.arve-badge {
+  padding: 7px 11px;
+  border: 1px solid rgba(75, 224, 220, 0.28);
+  border-radius: 999px;
+  background: rgba(75, 224, 220, 0.09);
+  color: #7af2ef;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.arve-badge--muted {
+  border-color: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  color: #b8c5d1;
+}
+
+.arve-price-list {
+  display: grid;
+  gap: 12px;
+}
+
+.arve-price-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 16px 18px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 17px;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.arve-price-card--quick {
+  border-left: 4px solid #8f5fe8;
+}
+
+.arve-price-card--reserve {
+  border-left: 4px solid #36cbbf;
+}
+
+.arve-price-card--democratic {
+  border-left: 4px solid #3d9fe8;
+}
+
+.arve-price-card__copy {
+  display: grid;
+  gap: 3px;
+}
+
+.arve-price-card__copy span {
+  color: #8fa3b5;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.arve-price-card__copy strong {
+  font-size: 1rem;
+}
+
+.arve-price-card__copy p {
+  margin: 0;
+  color: #aebdca;
+  font-size: 0.86rem;
+  line-height: 1.4;
+}
+
+.arve-price-card__price {
+  flex: 0 0 auto;
+  font-size: clamp(1.35rem, 4vw, 2rem);
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+
+.arve-original-prices {
+  display: grid;
+  gap: 8px;
+  margin-top: 16px;
+  padding: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 15px;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.arve-original-prices__title {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 2px;
+}
+
+.arve-original-prices__title span {
+  color: #8fa3b5;
+  font-size: 0.78rem;
+}
+
+.arve-original-price-row {
+  display: grid;
+  grid-template-columns: minmax(70px, 1fr) auto minmax(110px, auto);
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.arve-original-price-row > span {
+  color: #aebdca;
+}
+
+.arve-original-price-row > strong {
+  color: #f7fbff;
+}
+
+.arve-price-position {
+  justify-self: end;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-style: normal;
+  font-weight: 800;
+}
+
+.arve-price-position--ok,
+.arve-price-position--range {
+  background: rgba(75, 224, 220, 0.1);
+  color: #7af2ef;
+}
+
+.arve-price-position--high {
+  background: rgba(255, 174, 76, 0.11);
+  color: #ffc47a;
+}
+
+.arve-price-position--low {
+  background: rgba(143, 95, 232, 0.14);
+  color: #c4a8ff;
+}
+
+.arve-explanation {
+  margin-top: 16px;
+  padding: 15px;
+  border-radius: 15px;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.arve-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  margin-top: 12px;
+  color: #93a6b6;
+  font-size: 0.8rem;
+}
+
+.arve-metrics strong {
+  color: #eef9ff;
+}
+
+.arve-error {
+  margin-top: 14px;
+  padding: 11px 13px;
+  border: 1px solid rgba(255, 96, 96, 0.35);
+  border-radius: 12px;
+  background: rgba(255, 76, 76, 0.08);
+  color: #ffb0b0;
+}
+
+.arve-modal__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.arve-primary {
+  background: linear-gradient(135deg, #43e5d9, #39aee8);
+  color: #041017;
+  font-weight: 900;
+}
+
+.arve-disclaimer {
+  display: block;
+  margin-top: 12px;
+  color: #788b9a;
+  text-align: center;
+}
+
+.arve-loading-card {
+  width: min(620px, 100%);
+  padding: 26px;
+}
+
+.arve-loading-card__content {
+  flex: 1;
+}
+
+.arve-progress {
+  height: 6px;
+  margin-top: 18px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.arve-progress span {
+  display: block;
+  width: 42%;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #40dfd5, #3aa7ea);
+  animation: arve-progress 1.25s ease-in-out infinite alternate;
+}
+
+@keyframes arve-progress {
+  from { transform: translateX(-15%); }
+  to { transform: translateX(155%); }
+}
+
+@media (max-width: 640px) {
+  .arve-modal {
+    padding: 18px;
+  }
+
+  .arve-modal__header,
+  .arve-loading-card {
+    align-items: flex-start;
+  }
+
+  .arve-modal__icon,
+  .arve-loading-card__icon {
+    width: 68px;
+    height: 68px;
+    border-radius: 18px;
+  }
+
+  .arve-price-card {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .arve-original-prices__title {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .arve-original-price-row {
+    grid-template-columns: 1fr auto;
+  }
+
+  .arve-price-position {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
+
+  .arve-modal__actions {
+    flex-direction: column-reverse;
+  }
+
+  .arve-modal__actions .btn {
+    width: 100%;
+  }
+}

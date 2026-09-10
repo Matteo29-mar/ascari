@@ -74,7 +74,7 @@ export default function OffersPage() {
                 {offer.car.make} {offer.car.model} ({offer.amount} €)
               </b>
               <p className="muted">
-                Offerta da: {offer.buyer.email}  
+                Offerta da: {offer.buyer.name || offer.buyer.email}  
               </p>
             </div>
 

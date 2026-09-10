@@ -1,10 +1,23 @@
-// frontend/src/pages/MyGarage.tsx
-import { useEffect, useState } from 'react';
-import { useAuth, SignedIn, SignedOut, RedirectToSignIn } from '@clerk/clerk-react';
-import { getMyGarage } from '../api';
-import { Link } from 'react-router-dom';
+import { useEffect, useState } from "react";
+import {
+  useAuth,
+  SignedIn,
+  SignedOut,
+  RedirectToSignIn,
+} from "@clerk/clerk-react";
+import {
+  getMyGarage,
+  getStripeAccountStatus,
+  createStripeOnboardingLink,
+  getCarQrStats,
+  getDealerSubscription,
+} from "../api";
+import { Link, useNavigate } from "react-router-dom";
 import LikeButton from "../components/LikeButton";
-import { http } from "../api"; // ✅ usa la tua istanza axios
+import { http } from "../api";
+import AscariPopup from "../components/AscariPopup";
+import QrStatsModal, { QrStats } from "../components/QrStatsModal";
+import { useRole } from "../hooks/useRole";
 
 type Car = {
   id: number;
@@ -17,15 +30,57 @@ type Car = {
   likedByMe?: boolean;
   likes?: { id: string }[];
 
-  // ✅ PERIZIA (NUOVO)
   isPeriziata?: boolean;
   periziaUploadedAt?: string | null;
   periziaDocUrl?: string | null;
+
+  city?: string | null;
+
+  paymentEnabled?: boolean;
+  salePriceEur?: number | null;
+  ascariFeeEur?: number | null;
+  sellerNetEur?: number | null;
+
+  marketStatus?: "AVAILABLE" | "SOLD_PENDING_REMOVAL" | "REMOVED_AFTER_SALE";
+  soldAt?: string | null;
+  removalScheduledAt?: string | null;
+  visuallyRemovedAt?: string | null;
+  paymentStatus?: string | null;
+  dealerPlanSuspended?: boolean;
+  dealerPlanSuspendedAt?: string | null;
 };
 
 type MyGarageResponse = {
   myCars: Car[];
   likedCars: Car[];
+};
+
+type PopupState = {
+  open: boolean;
+  title?: string;
+  message?: string;
+  variant?: "success" | "error" | "warning" | "info";
+  confirmText?: string;
+  cancelText?: string;
+  onConfirm?: () => void;
+};
+
+type MatchSuggestion = {
+  slotId: number;
+  inspectorId: string;
+  inspectorName: string;
+  inspectorCity: string | null;
+  startAt: string;
+  endAt: string;
+};
+
+type StripeAccountStatus = {
+  accountId?: string | null;
+  status: "NOT_STARTED" | "PENDING" | "ENABLED";
+  chargesEnabled: boolean;
+  payoutsEnabled: boolean;
+  detailsSubmitted: boolean;
+  onboardingCompleted: boolean;
 };
 
 function BadgePerizia({ ok }: { ok: boolean }) {
@@ -39,7 +94,9 @@ function BadgePerizia({ ok }: { ok: boolean }) {
         borderRadius: 999,
         fontWeight: 800,
         fontSize: 12,
-        border: ok ? "1px solid rgba(0,255,180,0.35)" : "1px solid rgba(239,68,68,0.45)",
+        border: ok
+          ? "1px solid rgba(0,255,180,0.35)"
+          : "1px solid rgba(239,68,68,0.45)",
         background: ok ? "rgba(0,255,180,0.12)" : "rgba(239,68,68,0.10)",
         color: ok ? "#b8ffe9" : "#ffb4b4",
       }}
@@ -59,27 +116,268 @@ function BadgePerizia({ ok }: { ok: boolean }) {
   );
 }
 
+function PaymentBadge({ enabled }: { enabled: boolean }) {
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 8,
+        padding: "6px 10px",
+        borderRadius: 999,
+        fontWeight: 800,
+        fontSize: 12,
+        border: enabled
+          ? "1px solid rgba(105,210,255,0.30)"
+          : "1px solid rgba(148,163,184,0.30)",
+        background: enabled
+          ? "rgba(105,210,255,0.14)"
+          : "rgba(148,163,184,0.12)",
+        color: enabled ? "#bfefff" : "#cbd5e1",
+      }}
+      title={enabled ? "Pagamento configurato" : "Pagamento non configurato"}
+    >
+      <span
+        style={{
+          width: 8,
+          height: 8,
+          borderRadius: "50%",
+          background: enabled ? "#69d2ff" : "#94a3b8",
+          display: "inline-block",
+        }}
+      />
+      Pagamento: {enabled ? "SI" : "NO"}
+    </span>
+  );
+}
+
+function DealerPlanSuspendedBadge({ suspended }: { suspended?: boolean }) {
+  if (!suspended) return null;
+
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 8,
+        padding: "6px 10px",
+        borderRadius: 999,
+        fontWeight: 900,
+        fontSize: 12,
+        border: "1px solid rgba(248,113,113,0.45)",
+        background: "rgba(248,113,113,0.12)",
+        color: "#fecaca",
+      }}
+      title="Auto temporaneamente non visibile nella vetrina pubblica perché l'abbonamento concessionaria non è attivo"
+    >
+      Sospesa dal piano
+    </span>
+  );
+}
+
+function SaleStatusBadge({ car }: { car: Car }) {
+  const isSold =
+    car.marketStatus === "SOLD_PENDING_REMOVAL" ||
+    car.marketStatus === "REMOVED_AFTER_SALE" ||
+    car.paymentStatus === "SOLD";
+
+  if (!isSold) return null;
+
+  const removalDate = car.removalScheduledAt
+    ? new Date(car.removalScheduledAt)
+    : null;
+
+  const removalText =
+    removalDate && !Number.isNaN(removalDate.getTime())
+      ? `Rimozione automatica: ${removalDate.toLocaleDateString("it-IT")}`
+      : "Rimozione a breve";
+
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 8,
+        padding: "6px 10px",
+        borderRadius: 999,
+        fontWeight: 900,
+        fontSize: 12,
+        border: "1px solid rgba(251,191,36,0.45)",
+        background: "rgba(251,191,36,0.14)",
+        color: "#fde68a",
+      }}
+      title={removalText}
+    >
+      <span
+        style={{
+          width: 8,
+          height: 8,
+          borderRadius: "50%",
+          background: "#fbbf24",
+          display: "inline-block",
+        }}
+      />
+      Venduta · rimozione a breve
+    </span>
+  );
+}
+
+function normalizeGarage(payload: any): MyGarageResponse {
+  if (
+    payload &&
+    Array.isArray(payload.myCars) &&
+    Array.isArray(payload.likedCars)
+  ) {
+    return payload as MyGarageResponse;
+  }
+
+  const candidate = payload?.data ?? payload?.garage ?? payload;
+
+  const myCars = Array.isArray(candidate?.myCars) ? candidate.myCars : [];
+  const likedCars = Array.isArray(candidate?.likedCars)
+    ? candidate.likedCars
+    : [];
+
+  return { myCars, likedCars };
+}
+
+function todayISO() {
+  const d = new Date();
+  return d.toISOString().slice(0, 10);
+}
+
+function formatDateTimeLocal(v?: string | null) {
+  if (!v) return "";
+  const d = new Date(v);
+  if (isNaN(d.getTime())) return "";
+
+  return d.toLocaleString("it-IT", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function formatTimeLocal(v?: string | null) {
+  if (!v) return "";
+  const d = new Date(v);
+  if (isNaN(d.getTime())) return "";
+
+  return d.toLocaleTimeString("it-IT", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function formatEuro(value?: number | null) {
+  const n = Number(value ?? 0);
+  return new Intl.NumberFormat("it-IT", {
+    style: "currency",
+    currency: "EUR",
+    maximumFractionDigits: 0,
+  }).format(Number.isFinite(n) ? n : 0);
+}
+
 function MyGarageContent() {
   const { getToken } = useAuth();
-  const [data, setData] = useState<MyGarageResponse | null>(null);
+  const nav = useNavigate();
+  const { role } = useRole();
+  const isDealer = role === "CONCESSIONARIO";
+
+  const [data, setData] = useState<MyGarageResponse>({
+    myCars: [],
+    likedCars: [],
+  });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // upload state
   const [uploadingCarId, setUploadingCarId] = useState<number | null>(null);
 
+  const [openReqModal, setOpenReqModal] = useState(false);
+  const [reqCar, setReqCar] = useState<Car | null>(null);
+  const [reqDate, setReqDate] = useState<string>(todayISO());
+  const [reqStart, setReqStart] = useState<string>("09:00");
+  const [reqEnd, setReqEnd] = useState<string>("10:00");
+  const [reqLoading, setReqLoading] = useState(false);
+  const [reqErr, setReqErr] = useState<string | null>(null);
+
+  const [expandedRadiusKm, setExpandedRadiusKm] = useState<number>(100);
+  const [showRadiusSearch, setShowRadiusSearch] = useState(false);
+  const [pendingSuggestion, setPendingSuggestion] =
+    useState<MatchSuggestion | null>(null);
+
+  const [stripeStatus, setStripeStatus] = useState<StripeAccountStatus | null>(null);
+  const [stripeBusy, setStripeBusy] = useState(false);
+  const [qrStatsOpen, setQrStatsOpen] = useState(false);
+  const [qrStatsLoading, setQrStatsLoading] = useState(false);
+  const [qrStats, setQrStats] = useState<QrStats | null>(null);
+  const [dealerStatsEnabled, setDealerStatsEnabled] = useState(true);
+
+  const [popup, setPopup] = useState<PopupState>({
+    open: false,
+    message: "",
+    variant: "info",
+  });
+
+  function openPopup(next: PopupState) {
+    setPopup(next);
+  }
+
+  function closePopup() {
+    setPopup({
+      open: false,
+      message: "",
+      variant: "info",
+    });
+  }
+
+  async function loadStripeStatus() {
+    try {
+      const token = await getToken();
+      if (!token) return;
+
+      const status = await getStripeAccountStatus(token);
+      setStripeStatus(status);
+    } catch (e) {
+      console.error("Errore stato Stripe:", e);
+    }
+  }
+
   async function loadGarage() {
+    setLoading(true);
     try {
       setError(null);
       const token = await getToken();
+
       if (!token) {
         setError("Utente non autenticato");
+        setData({ myCars: [], likedCars: [] });
         return;
       }
+
       const res = await getMyGarage(token);
-      setData(res);
+      const normalized = normalizeGarage(res);
+      setData(normalized);
+
+      if (isDealer) {
+        try {
+          const subscription = await getDealerSubscription(token);
+          setDealerStatsEnabled(!!subscription?.current?.statsEnabled);
+        } catch (subscriptionError) {
+          console.error("Errore piano concessionaria:", subscriptionError);
+          setDealerStatsEnabled(false);
+        }
+      } else {
+        setDealerStatsEnabled(true);
+      }
+
+      await loadStripeStatus();
     } catch (e: any) {
+      console.error("Errore caricamento garage:", e);
       setError(e?.message || "Errore caricamento garage");
+      setData({ myCars: [], likedCars: [] });
     } finally {
       setLoading(false);
     }
@@ -88,13 +386,54 @@ function MyGarageContent() {
   useEffect(() => {
     loadGarage();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [getToken]);
+  }, [isDealer]);
+
+  async function handleEnablePayments() {
+    try {
+      const token = await getToken();
+      if (!token) {
+        openPopup({
+          open: true,
+          title: "Accesso richiesto",
+          message: "Devi essere loggato per abilitare i pagamenti.",
+          variant: "warning",
+        });
+        return;
+      }
+
+      setStripeBusy(true);
+      const data = await createStripeOnboardingLink(token);
+
+      if (!data?.url) {
+        throw new Error("Link onboarding Stripe non disponibile");
+      }
+
+      window.location.href = data.url;
+    } catch (e: any) {
+      openPopup({
+        open: true,
+        title: "Errore Stripe",
+        message:
+          e?.response?.data?.error ||
+          e?.message ||
+          "Impossibile avviare l’onboarding Stripe.",
+        variant: "error",
+      });
+    } finally {
+      setStripeBusy(false);
+    }
+  }
 
   async function uploadPerizia(carId: number, file: File) {
     try {
       const token = await getToken();
       if (!token) {
-        alert("Devi essere loggato per caricare la perizia");
+        openPopup({
+          open: true,
+          title: "Accesso richiesto",
+          message: "Devi essere loggato per caricare la perizia.",
+          variant: "warning",
+        });
         return;
       }
 
@@ -110,92 +449,503 @@ function MyGarageContent() {
         },
       });
 
-      alert("Perizia caricata con successo ✅");
-      await loadGarage(); // refresh badge rosso/verde
+      openPopup({
+        open: true,
+        title: "Perizia caricata",
+        message: "La perizia è stata caricata con successo.",
+        variant: "success",
+      });
+
+      await loadGarage();
     } catch (e: any) {
       console.error(e);
-      alert(e?.response?.data?.error || e?.message || "Errore upload perizia");
+      openPopup({
+        open: true,
+        title: "Errore upload",
+        message:
+          e?.response?.data?.error || e?.message || "Errore upload perizia",
+        variant: "error",
+      });
     } finally {
       setUploadingCarId(null);
     }
   }
 
+  function openContactInspector(car: Car) {
+    setReqErr(null);
+    setReqCar(car);
+    setReqDate(todayISO());
+    setReqStart("09:00");
+    setReqEnd("10:00");
+    setExpandedRadiusKm(100);
+    setShowRadiusSearch(false);
+    setPendingSuggestion(null);
+    setOpenReqModal(true);
+  }
+
+  async function acceptSuggestedSlot(slotId: number) {
+    if (!reqCar) return;
+
+    setReqLoading(true);
+    setReqErr(null);
+
+    try {
+      const token = await getToken();
+      if (!token) {
+        setReqErr("Non sei autenticato");
+        return;
+      }
+
+      const { data } = await http.post(
+        "/inspector/inspections/request",
+        {
+          carId: reqCar.id,
+          requestedDate: reqDate,
+          startTime: reqStart,
+          endTime: reqEnd,
+          suggestedSlotId: slotId,
+        },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+
+      if (!data?.ok || !data?.match) {
+        throw new Error(data?.error || "Impossibile confermare la proposta");
+      }
+
+      setPendingSuggestion(null);
+      setShowRadiusSearch(false);
+      setOpenReqModal(false);
+      setReqCar(null);
+
+      openPopup({
+        open: true,
+        title: "Richiesta inviata",
+        message:
+          "Hai accettato l’orario alternativo. La richiesta è stata inviata correttamente.",
+        variant: "success",
+      });
+    } catch (e: any) {
+      setReqErr(e?.response?.data?.error ?? e?.message ?? "Errore");
+    } finally {
+      setReqLoading(false);
+    }
+  }
+
+  async function submitInspectionRequest(useExpandedRadius = false) {
+    if (!reqCar) return;
+
+    setReqErr(null);
+    setReqLoading(true);
+
+    try {
+      const token = await getToken();
+      if (!token) {
+        setReqErr("Non sei autenticato");
+        return;
+      }
+
+      const payload: any = {
+        carId: reqCar.id,
+        requestedDate: reqDate,
+        startTime: reqStart,
+        endTime: reqEnd,
+      };
+
+      if (useExpandedRadius) {
+        payload.expandedRadiusKm = expandedRadiusKm;
+      }
+
+      const { data } = await http.post(
+        "/inspector/inspections/request",
+        payload,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+
+      if (!data?.ok) {
+        throw new Error(data?.error || "Richiesta fallita");
+      }
+
+      if (data.match) {
+        setOpenReqModal(false);
+        setReqCar(null);
+        setPendingSuggestion(null);
+        setShowRadiusSearch(false);
+
+        let successMessage =
+          "Un periziatore ha disponibilità. La tua richiesta è stata inviata correttamente.";
+
+        if (data.step === "RADIUS_MATCH") {
+          successMessage =
+            "Abbiamo trovato un periziatore allargando il raggio di ricerca. La richiesta è stata inviata correttamente.";
+        }
+
+        openPopup({
+          open: true,
+          title: "Richiesta inviata",
+          message: successMessage,
+          variant: "success",
+        });
+
+        return;
+      }
+
+      if (data.step === "CITY_OTHER_TIME" && data.suggestion) {
+        setPendingSuggestion(data.suggestion);
+
+        const start = formatDateTimeLocal(data.suggestion.startAt);
+        const end = formatTimeLocal(data.suggestion.endAt);
+
+        openPopup({
+          open: true,
+          title: "Orario alternativo trovato",
+          message:
+            `Nessuno disponibile all’orario richiesto.\n` +
+            `Abbiamo trovato ${data.suggestion.inspectorName}` +
+            `${data.suggestion.inspectorCity ? ` a ${data.suggestion.inspectorCity}` : ""}` +
+            ` in questo orario:\n${start} - ${end}\n\nAccetti questa alternativa?`,
+          variant: "info",
+          confirmText: "Accetta",
+          cancelText: "Annulla",
+          onConfirm: () => {
+            closePopup();
+            acceptSuggestedSlot(data.suggestion.slotId);
+          },
+        });
+
+        return;
+      }
+
+      if (data.step === "ASK_EXPAND_RADIUS") {
+        setShowRadiusSearch(true);
+
+        openPopup({
+          open: true,
+          title: "Nessun match in città",
+          message:
+            data.message ||
+            "Non abbiamo trovato nessuno nella tua città. Puoi allargare il raggio di ricerca qui sotto.",
+          variant: "warning",
+        });
+
+        return;
+      }
+
+      openPopup({
+        open: true,
+        title: "Nessun match disponibile",
+        message:
+          data?.message ||
+          "I nostri periziatori sono impegnati. Prova un altro giorno o un altro orario.",
+        variant: "warning",
+      });
+    } catch (e: any) {
+      setReqErr(e?.response?.data?.error ?? e?.message ?? "Errore");
+    } finally {
+      setReqLoading(false);
+    }
+  }
+
+  async function openQrStats(car: Car) {
+    try {
+      const token = await getToken();
+
+      if (!token) {
+        openPopup({
+          open: true,
+          title: "Accesso richiesto",
+          message: "Devi essere loggato per vedere le statistiche.",
+          variant: "warning",
+        });
+        return;
+      }
+
+      setQrStatsLoading(true);
+
+      const data = await getCarQrStats(car.id, token);
+
+      setQrStats(data);
+      setQrStatsOpen(true);
+    } catch (e: any) {
+      openPopup({
+        open: true,
+        title: "Errore statistiche",
+        message:
+          e?.response?.data?.error ||
+          e?.message ||
+          "Impossibile caricare le statistiche QR.",
+        variant: "error",
+      });
+    } finally {
+      setQrStatsLoading(false);
+    }
+  }
+
   if (loading) return <div>Caricamento garage...</div>;
-  if (error) return <div style={{ color: 'var(--danger)' }}>{error}</div>;
-  if (!data) return <div>Nessun dato garage disponibile.</div>;
+  if (error) return <div style={{ color: "var(--danger)" }}>{error}</div>;
+
+  const myCars = Array.isArray(data.myCars) ? data.myCars : [];
+  const likedCars = Array.isArray(data.likedCars) ? data.likedCars : [];
+
+  const stripeBadge = (() => {
+    if (!stripeStatus) return { text: "Non disponibile", color: "#94a3b8" };
+    if (stripeStatus.status === "ENABLED") return { text: "Abilitato", color: "#34d399" };
+    if (stripeStatus.status === "PENDING") return { text: "In verifica", color: "#fbbf24" };
+    return { text: "Non configurato", color: "#94a3b8" };
+  })();
 
   return (
-    <div style={{ padding: '2rem 1rem' }}>
-      <h1 style={{ marginBottom: '1.5rem' }}>Il mio garage</h1>
+    <div style={{ padding: "2rem 1rem" }}>
+      {popup.open && (
+        <AscariPopup
+          title={popup.title}
+          message={popup.message}
+          variant={popup.variant}
+          confirmText={popup.confirmText}
+          cancelText={popup.cancelText}
+          onConfirm={popup.onConfirm}
+          onCancel={closePopup}
+          onClose={closePopup}
+        />
+      )}
+      {qrStatsOpen && qrStats && (
+          <QrStatsModal
+            stats={qrStats}
+            onClose={() => {
+              setQrStatsOpen(false);
+              setQrStats(null);
+            }}
+          />
+        )}
 
-      {/* === LE MIE AUTO === */}
+      <h1 style={{ marginBottom: "1.5rem" }}>Il mio garage</h1>
+
+      <section className="card" style={{ marginBottom: "2rem" }}>
+        <div className="card-body">
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              gap: 16,
+              alignItems: "center",
+              flexWrap: "wrap",
+            }}
+          >
+            <div>
+              <h2 style={{ margin: 0 }}>Pagamenti Stripe</h2>
+              <p className="muted" style={{ marginTop: 8, marginBottom: 0, lineHeight: 1.6 }}>
+                Collega il tuo account Stripe per ricevere i soldi delle vendite su Ascari.
+              </p>
+            </div>
+
+            <button
+              className="btn"
+              type="button"
+              onClick={handleEnablePayments}
+              disabled={stripeBusy}
+              style={{ minWidth: 220 }}
+            >
+              {stripeBusy
+                ? "Attendere..."
+                : stripeStatus?.status === "ENABLED"
+                ? "Aggiorna dati pagamenti"
+                : "Abilita pagamenti"}
+            </button>
+          </div>
+
+          <div
+            style={{
+              marginTop: 16,
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 8,
+              padding: "8px 12px",
+              borderRadius: 999,
+              border: `1px solid ${stripeBadge.color}55`,
+              background: `${stripeBadge.color}22`,
+              color: stripeBadge.color,
+              fontWeight: 800,
+            }}
+          >
+            <span
+              style={{
+                width: 8,
+                height: 8,
+                borderRadius: "50%",
+                background: stripeBadge.color,
+              }}
+            />
+            Stato pagamenti: {stripeBadge.text}
+          </div>
+        </div>
+      </section>
+
       <section>
         <h2>Le mie auto</h2>
-        {data.myCars.length === 0 && <p>Non hai ancora caricato auto.</p>}
+        {myCars.length === 0 && <p>Non hai ancora caricato auto.</p>}
 
         <div className="grid">
-          {data.myCars.map(car => {
+          {myCars.map((car) => {
             const imgSrc =
               car.coverUrl ||
-              (car.photos && car.photos[0]) ||
+              (Array.isArray(car.photos) && car.photos[0]) ||
               "/cars/placeholder.jpg";
 
             const periziata = !!car.isPeriziata;
 
             return (
               <article key={car.id} className="card">
-                <img src={imgSrc} className="card-image" />
+                <img src={imgSrc} className="card-image" alt="cover" />
 
                 <div className="card-body">
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      gap: 10,
+                      alignItems: "center",
+                      flexWrap: "wrap",
+                    }}
+                  >
                     <h3 style={{ margin: 0 }}>{car.title}</h3>
-                    <BadgePerizia ok={periziata} />
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      <SaleStatusBadge car={car} />
+                      <DealerPlanSuspendedBadge suspended={car.dealerPlanSuspended} />
+                      <BadgePerizia ok={periziata} />
+                      <PaymentBadge enabled={!!car.paymentEnabled} />
+                    </div>
                   </div>
 
-                  <p>{car.make} {car.model} ({car.year})</p>
+                  <p>
+                    {car.make} {car.model} ({car.year})
+                  </p>
 
-                  {/* ✅ Upload perizia (solo se non periziata) */}
+                  {car.paymentEnabled && (
+                    <div
+                      style={{
+                        marginTop: 10,
+                        display: "grid",
+                        gap: 10,
+                        gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
+                      }}
+                    >
+                      <MiniValue label="Prezzo vendita" value={formatEuro(car.salePriceEur)} />
+                      <MiniValue label="Commissione Ascari" value={formatEuro(car.ascariFeeEur)} />
+                      <MiniValue label="Netto venditore" value={formatEuro(car.sellerNetEur)} />
+                    </div>
+                  )}
+
                   {!periziata && (
                     <div style={{ marginTop: 10 }}>
-                      <label
-                        className="btn secondary"
-                        style={{ display: "inline-flex", alignItems: "center", gap: 8, cursor: "pointer" }}
-                        title="Carica PDF perizia"
+                      <div
+                        style={{
+                          display: "flex",
+                          gap: 10,
+                          flexWrap: "wrap",
+                          alignItems: "center",
+                        }}
                       >
-                        {uploadingCarId === car.id ? "Caricamento..." : "Carica perizia (PDF)"}
-                        <input
-                          type="file"
-                          accept="application/pdf"
-                          hidden
-                          disabled={uploadingCarId === car.id}
-                          onChange={(e) => {
-                            const file = e.target.files?.[0];
-                            if (!file) return;
-
-                            if (file.type !== "application/pdf") {
-                              alert("Carica un file PDF.");
-                              e.currentTarget.value = "";
-                              return;
-                            }
-
-                            uploadPerizia(car.id, file);
-                            e.currentTarget.value = "";
+                        <label
+                          className="btn secondary"
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 8,
+                            cursor: "pointer",
                           }}
-                        />
-                      </label>
+                          title="Carica PDF perizia"
+                        >
+                          {uploadingCarId === car.id
+                            ? "Caricamento..."
+                            : "Carica perizia (PDF)"}
+                          <input
+                            type="file"
+                            accept="application/pdf"
+                            hidden
+                            disabled={uploadingCarId === car.id}
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (!file) return;
 
-                      <p className="muted" style={{ marginTop: 8, marginBottom: 0 }}>
-                        Dopo l’upload, la perizia risulterà verde e sarà scaricabile dalla scheda auto.
+                              if (file.type !== "application/pdf") {
+                                openPopup({
+                                  open: true,
+                                  title: "File non valido",
+                                  message: "Carica un file PDF.",
+                                  variant: "warning",
+                                });
+                                e.currentTarget.value = "";
+                                return;
+                              }
+
+                              uploadPerizia(car.id, file);
+                              e.currentTarget.value = "";
+                            }}
+                          />
+                        </label>
+
+                        <button
+                          className="btn"
+                          type="button"
+                          onClick={() => openContactInspector(car)}
+                          title="Invia richiesta perizia"
+                        >
+                          Contatta periziatore
+                        </button>
+                      </div>
+
+                      <p
+                        className="muted"
+                        style={{ marginTop: 8, marginBottom: 0 }}
+                      >
+                        Seleziona giorno e orario: il sistema cercherà un
+                        periziatore disponibile nella tua area.
                       </p>
                     </div>
                   )}
 
-                  <div className="card-actions" style={{ marginTop: 14 }}>
+                  <div
+                    className="card-actions"
+                    style={{
+                      marginTop: 14,
+                      display: "flex",
+                      gap: 10,
+                      flexWrap: "wrap",
+                    }}
+                  >
                     <Link className="btn" to={`/cars/${car.id}`}>
                       Dettaglio modello
                     </Link>
 
-                    {/* ❤️ il proprietario NON può mettere like alla propria auto */}
+                    {car.marketStatus === "SOLD_PENDING_REMOVAL" ||
+                    car.marketStatus === "REMOVED_AFTER_SALE" ||
+                    car.paymentStatus === "SOLD" ? (
+                      <button
+                        className="btn secondary"
+                        type="button"
+                        onClick={() => nav(`/history`)}
+                      >
+                        Vai allo storico
+                      </button>
+                    ) : (
+                      <button
+                        className="btn secondary"
+                        type="button"
+                        onClick={() => nav(`/cars/${car.id}`)}
+                      >
+                        Configura pagamento
+                      </button>
+                    )}
+                    {(!isDealer || dealerStatsEnabled) && (
+                      <button
+                        className="btn secondary"
+                        type="button"
+                        onClick={() => openQrStats(car)}
+                        disabled={qrStatsLoading}
+                      >
+                        {qrStatsLoading ? "Caricamento..." : "Statistiche"}
+                      </button>
+                    )}
+
                     <LikeButton
                       carId={car.id}
                       initialLiked={car.likedByMe ?? false}
@@ -209,30 +959,29 @@ function MyGarageContent() {
         </div>
       </section>
 
-      {/* === AUTO CHE MI PIACCIONO === */}
       <section style={{ marginTop: "2.5rem" }}>
         <h2>Le auto che mi piacciono</h2>
-        {data.likedCars.length === 0 && <p>Non hai ancora messo Mi piace.</p>}
+        {likedCars.length === 0 && <p>Non hai ancora messo Mi piace.</p>}
 
         <div className="grid">
-          {data.likedCars.map(car => {
+          {likedCars.map((car) => {
             const imgSrc =
               car.coverUrl ||
-              (car.photos && car.photos[0]) ||
+              (Array.isArray(car.photos) && car.photos[0]) ||
               "/cars/placeholder.jpg";
 
             return (
               <article key={car.id} className="card">
-                <img src={imgSrc} className="card-image" />
+                <img src={imgSrc} className="card-image" alt="cover" />
 
                 <div className="card-body">
                   <h3>{car.title}</h3>
-                  <p>{car.make} {car.model} ({car.year})</p>
+                  <p>
+                    {car.make} {car.model} ({car.year})
+                  </p>
 
                   <div className="card-actions">
-                    {/* ❤️ qui l'utente può rimuovere il like */}
                     <LikeButton carId={car.id} initialLiked={true} />
-
                     <Link className="btn" to={`/cars/${car.id}`}>
                       Dettaglio modello
                     </Link>
@@ -243,6 +992,171 @@ function MyGarageContent() {
           })}
         </div>
       </section>
+
+      {openReqModal && reqCar && (
+        <div
+          className="ascari-modal"
+          onClick={() => !reqLoading && setOpenReqModal(false)}
+        >
+          <div
+            className="ascari-modal-box"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3>Contatta periziatore</h3>
+            <p className="muted">
+              Auto: <b>{reqCar.title}</b>
+            </p>
+
+            <div style={{ display: "grid", gap: 12, marginTop: 14 }}>
+              <label>
+                Giorno
+                <input
+                  type="date"
+                  value={reqDate}
+                  onChange={(e) => setReqDate(e.target.value)}
+                />
+              </label>
+
+              <div
+                style={{
+                  display: "grid",
+                  gap: 12,
+                  gridTemplateColumns: "1fr 1fr",
+                }}
+              >
+                <label>
+                  Ora inizio
+                  <input
+                    type="time"
+                    value={reqStart}
+                    onChange={(e) => setReqStart(e.target.value)}
+                  />
+                </label>
+
+                <label>
+                  Ora fine
+                  <input
+                    type="time"
+                    value={reqEnd}
+                    onChange={(e) => setReqEnd(e.target.value)}
+                  />
+                </label>
+              </div>
+
+              {pendingSuggestion && (
+                <div
+                  style={{
+                    padding: 12,
+                    borderRadius: 12,
+                    border: "1px solid rgba(255,255,255,0.12)",
+                    background: "rgba(255,255,255,0.04)",
+                  }}
+                >
+                  <div style={{ fontWeight: 800, marginBottom: 6 }}>
+                    Proposta trovata nella tua città
+                  </div>
+                  <div className="muted" style={{ lineHeight: 1.5 }}>
+                    <div>
+                      Periziatore: <b>{pendingSuggestion.inspectorName}</b>
+                    </div>
+                    {pendingSuggestion.inspectorCity && (
+                      <div>
+                        Città: <b>{pendingSuggestion.inspectorCity}</b>
+                      </div>
+                    )}
+                    <div>
+                      Orario:{" "}
+                      <b>
+                        {formatDateTimeLocal(pendingSuggestion.startAt)} -{" "}
+                        {formatTimeLocal(pendingSuggestion.endAt)}
+                      </b>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {showRadiusSearch && (
+                <div
+                  style={{
+                    marginTop: 8,
+                    padding: 12,
+                    borderRadius: 12,
+                    border: "1px solid rgba(255,255,255,0.12)",
+                    background: "rgba(255,255,255,0.04)",
+                  }}
+                >
+                  <div style={{ fontWeight: 700, marginBottom: 8 }}>
+                    Allarga il raggio di ricerca
+                  </div>
+
+                  <label style={{ display: "block" }}>
+                    Raggio: <b>{expandedRadiusKm} km</b>
+                    <input
+                      type="range"
+                      min={20}
+                      max={300}
+                      step={10}
+                      value={expandedRadiusKm}
+                      onChange={(e) =>
+                        setExpandedRadiusKm(Number(e.target.value))
+                      }
+                      style={{ width: "100%", marginTop: 8 }}
+                    />
+                  </label>
+
+                  <button
+                    className="btn"
+                    type="button"
+                    style={{ marginTop: 12, width: "100%" }}
+                    onClick={() => submitInspectionRequest(true)}
+                    disabled={reqLoading}
+                  >
+                    {reqLoading ? "Ricerca..." : "Cerca nel raggio"}
+                  </button>
+                </div>
+              )}
+
+              {reqErr && <div style={{ color: "var(--danger)" }}>{reqErr}</div>}
+            </div>
+
+            <button
+              className="btn"
+              style={{ marginTop: 18, width: "100%" }}
+              onClick={() => submitInspectionRequest(false)}
+              disabled={reqLoading}
+            >
+              {reqLoading ? "Invio..." : "Invia richiesta"}
+            </button>
+
+            <button
+              className="btn ghost"
+              style={{ marginTop: 10, width: "100%" }}
+              onClick={() => setOpenReqModal(false)}
+              disabled={reqLoading}
+            >
+              Chiudi
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MiniValue({ label, value }: { label: string; value: string }) {
+  return (
+    <div
+      style={{
+        border: "1px solid rgba(255,255,255,0.10)",
+        background: "rgba(255,255,255,0.03)",
+        borderRadius: 14,
+        padding: 12,
+      }}
+    >
+      <div className="muted" style={{ marginBottom: 6 }}>
+        {label}
+      </div>
+      <b>{value}</b>
     </div>
   );
 }

@@ -1,17 +1,27 @@
-// backend/src/routes/offers.ts
 import { Router } from "express";
 import { prisma } from "../prisma";
 import { getAuth } from "@clerk/express";
 import { ensureUserInDb } from "../lib/authUser";
+import {
+  isCarAvailable,
+  isCarRemovedAfterSale,
+  isCarSold,
+  runSoldCarsVisualCleanup,
+} from "../lib/carSaleLifecycle";
+import { sendOfferReceivedEmail } from "../lib/email/sendOfferReceivedEmail";
+import { safeRecordArveMarketObservation } from "../services/arve/marketObservationService";
 
 const router = Router();
 
 /**
  * POST /api/offers
- * Crea una nuova offerta su un'auto
+ * Crea una nuova offerta su un'auto.
+ * Consentito solo se auto AVAILABLE.
  */
 router.post("/", async (req, res) => {
   try {
+    await runSoldCarsVisualCleanup(prisma);
+
     const { userId: clerkUserId } = getAuth(req);
 
     if (!clerkUserId) {
@@ -24,10 +34,8 @@ router.post("/", async (req, res) => {
       return res.status(400).json({ error: "Dati mancanti" });
     }
 
-    // ✅ buyer: se non esiste nel DB lo creo al volo
     const buyer = await ensureUserInDb(clerkUserId);
 
-    // 🔍 Auto + owner
     const car = await prisma.car.findUnique({
       where: { id: Number(carId) },
       include: { owner: true },
@@ -37,26 +45,30 @@ router.post("/", async (req, res) => {
       return res.status(404).json({ error: "Auto non trovata" });
     }
 
-    // ❌ no auto propria
-    if (car.ownerId === buyer.id) {
-      return res
-        .status(400)
-        .json({ error: "Non puoi fare un'offerta sulla tua auto" });
-    }
-
-    // ❌ valida prezzo
-    const acceptedAmounts = [car.offerPrice1, car.offerPrice2, car.offerPrice3]
-      .filter((v): v is number => typeof v === "number");
-
-    if (!acceptedAmounts.includes(Number(amount))) {
+    if (!isCarAvailable(car)) {
       return res.status(400).json({
         error:
-          "Prezzo non valido. Devi scegliere una delle 3 offerte disponibili.",
+          "Questa auto non è più disponibile. La vendita potrebbe essere già conclusa.",
+        code: "CAR_NOT_AVAILABLE",
       });
     }
 
-    // (opzionale) evita doppie offerte pending identiche per la stessa auto
-    // Se non lo vuoi, rimuovi questo blocco.
+    if (car.ownerId === buyer.id) {
+      return res.status(400).json({
+        error: "Non puoi fare un'offerta sulla tua auto",
+      });
+    }
+
+    const acceptedAmounts = [car.offerPrice1, car.offerPrice2, car.offerPrice3].filter(
+      (v): v is number => typeof v === "number"
+    );
+
+    if (!acceptedAmounts.includes(Number(amount))) {
+      return res.status(400).json({
+        error: "Prezzo non valido. Devi scegliere una delle 3 offerte disponibili.",
+      });
+    }
+
     const existing = await prisma.offer.findFirst({
       where: {
         carId: car.id,
@@ -72,7 +84,6 @@ router.post("/", async (req, res) => {
       });
     }
 
-    // ✅ crea offerta
     const offer = await prisma.offer.create({
       data: {
         carId: car.id,
@@ -83,21 +94,90 @@ router.post("/", async (req, res) => {
       },
     });
 
+    await safeRecordArveMarketObservation(prisma, {
+      type: "OFFER_RECEIVED",
+      externalKey: `offer:${offer.id}:received`,
+      car,
+      amountEur: offer.amount,
+      metadata: {
+        offerId: offer.id,
+      },
+      occurredAt: offer.createdAt,
+    });
+
+    /**
+     * L'offerta è già stata salvata.
+     *
+     * Se l'email fallisce:
+     * - l'offerta rimane valida;
+     * - il compratore riceve comunque risposta 201;
+     * - l'errore viene scritto nei log.
+     */
+    try {
+      const emailResult = await sendOfferReceivedEmail({
+        offerId: offer.id,
+
+        sellerEmail: car.owner.email,
+        sellerName: car.owner.name,
+
+        buyerEmail: buyer.email,
+        buyerName: buyer.name,
+
+        carId: car.id,
+        carTitle: car.title,
+        carMake: car.make,
+        carModel: car.model,
+        carCoverUrl: car.coverUrl,
+        carPhotos: car.photos,
+        isPeriziata: car.isPeriziata,
+
+        amount: offer.amount,
+      });
+
+      if (emailResult.skipped) {
+        console.info("[EMAIL][OFFER_RECEIVED] skipped", {
+          offerId: offer.id,
+          sellerId: car.ownerId,
+          reason: emailResult.reason,
+        });
+      } else {
+        console.info("[EMAIL][OFFER_RECEIVED] sent", {
+          offerId: offer.id,
+          sellerId: car.ownerId,
+          resendEmailId: emailResult.emailId,
+        });
+      }
+    } catch (emailError) {
+      console.error("[EMAIL][OFFER_RECEIVED] failed", {
+        offerId: offer.id,
+        sellerId: car.ownerId,
+        error:
+          emailError instanceof Error
+            ? emailError.message
+            : String(emailError),
+      });
+    }
+
     return res.status(201).json({ ok: true, offer });
   } catch (err) {
-    console.error("❌ Errore POST /offers", err);
+    console.error("Errore POST /offers", err);
     return res.status(500).json({ error: "Errore creazione offerta" });
   }
 });
 
 /**
  * POST /api/offers/:id/accept
- * Accetta un'offerta (solo seller)
- * - crea chat se non esiste
- * - aggiorna status = ACCEPTED
+ * Accetta un'offerta.
+ *
+ * Consentito solo se:
+ * - seller corretto
+ * - offerta PENDING oppure già ACCEPTED
+ * - auto ancora AVAILABLE
  */
 router.post("/:id/accept", async (req, res) => {
   try {
+    await runSoldCarsVisualCleanup(prisma);
+
     const offerId = Number(req.params.id);
     const { userId: clerkUserId } = getAuth(req);
 
@@ -107,7 +187,6 @@ router.post("/:id/accept", async (req, res) => {
 
     const me = await ensureUserInDb(clerkUserId);
 
-    // 1️⃣ Trovo l’offerta
     const offer = await prisma.offer.findUnique({
       where: { id: offerId },
       include: { car: true },
@@ -117,12 +196,17 @@ router.post("/:id/accept", async (req, res) => {
       return res.status(404).json({ error: "Offerta non trovata" });
     }
 
-    // ✅ solo seller può accettare
     if (offer.sellerId !== me.id) {
       return res.status(403).json({ error: "Non autorizzato" });
     }
 
-    // (opzionale) se già accepted, ritorna chat esistente (idempotenza)
+    if (isCarSold(offer.car) || !isCarAvailable(offer.car)) {
+      return res.status(400).json({
+        error: "Questa auto non è più disponibile. Non puoi accettare nuove offerte.",
+        code: "CAR_NOT_AVAILABLE",
+      });
+    }
+
     if (offer.status === "ACCEPTED") {
       const existingChat = await prisma.chat.findUnique({
         where: { offerId: offer.id },
@@ -135,7 +219,12 @@ router.post("/:id/accept", async (req, res) => {
       });
     }
 
-    // 2️⃣ Se non esiste già una chat, la creo
+    if (offer.status !== "PENDING") {
+      return res.status(400).json({
+        error: `Non puoi accettare un'offerta in stato ${offer.status}.`,
+      });
+    }
+
     let chat = await prisma.chat.findUnique({
       where: { offerId: offer.id },
     });
@@ -144,23 +233,31 @@ router.post("/:id/accept", async (req, res) => {
       chat = await prisma.chat.create({
         data: {
           offerId: offer.id,
-          carId: offer.carId,
           buyerId: offer.buyerId,
           sellerId: offer.sellerId,
         },
       });
     }
 
-    // 3️⃣ Aggiorno lo stato dell’offerta
     const updatedOffer = await prisma.offer.update({
       where: { id: offer.id },
       data: { status: "ACCEPTED" },
     });
 
+    await safeRecordArveMarketObservation(prisma, {
+      type: "OFFER_ACCEPTED",
+      externalKey: `offer:${offer.id}:accepted`,
+      car: offer.car,
+      amountEur: updatedOffer.amount,
+      metadata: {
+        offerId: offer.id,
+      },
+    });
+
     return res.json({
       ok: true,
       offer: updatedOffer,
-      chatId: chat.id, // 👈 fondamentale per il frontend
+      chatId: chat.id,
     });
   } catch (err) {
     console.error("Errore accept:", err);
@@ -170,9 +267,12 @@ router.post("/:id/accept", async (req, res) => {
 
 /**
  * DELETE /api/offers/:id
- * Elimina un'offerta (solo buyer o seller)
- * - se ACCEPTED e non forzato -> blocco
- * - elimina chat e poi offerta
+ * Elimina un'offerta manualmente.
+ *
+ * Nota:
+ * Questo mantiene il tuo comportamento attuale.
+ * Il flusso automatico post-vendita invece non cancella dal DB:
+ * nasconde le offerte tramite marketStatus/visuallyRemovedAt dell'auto.
  */
 router.delete("/:id", async (req, res) => {
   try {
@@ -194,24 +294,20 @@ router.delete("/:id", async (req, res) => {
       return res.status(404).json({ error: "Offerta non trovata" });
     }
 
-    // ✅ solo buyer o seller possono eliminare
     if (offer.buyerId !== me.id && offer.sellerId !== me.id) {
       return res.status(403).json({ error: "Non autorizzato" });
     }
 
-    // 🔒 se ACCEPTED e non forzato → blocco
     if (offer.status === "ACCEPTED" && !force) {
       return res.status(400).json({
         error: "Offer accepted, confirmation required",
       });
     }
 
-    // 🧹 elimina chat (cascade → message)
     await prisma.chat.deleteMany({
       where: { offerId },
     });
 
-    // 🧹 elimina offerta
     await prisma.offer.delete({
       where: { id: offerId },
     });
@@ -225,18 +321,27 @@ router.delete("/:id", async (req, res) => {
 
 /**
  * POST /api/offers/:id/decline
- * Rifiuta un'offerta (solo seller)
+ * Rifiuta un'offerta.
+ *
+ * Se l'auto è venduta/rimossa, le offerte non sono più operative.
  */
 router.post("/:id/decline", async (req, res) => {
   const { userId: clerkUserId } = getAuth(req);
   const offerId = Number(req.params.id);
 
-  if (!clerkUserId) return res.status(401).json({ error: "Non autenticato" });
+  if (!clerkUserId) {
+    return res.status(401).json({ error: "Non autenticato" });
+  }
 
   try {
+    await runSoldCarsVisualCleanup(prisma);
+
     const me = await ensureUserInDb(clerkUserId);
 
-    const offer = await prisma.offer.findUnique({ where: { id: offerId } });
+    const offer = await prisma.offer.findUnique({
+      where: { id: offerId },
+      include: { car: true },
+    });
 
     if (!offer) {
       return res.status(404).json({ error: "Offerta non trovata" });
@@ -244,6 +349,13 @@ router.post("/:id/decline", async (req, res) => {
 
     if (offer.sellerId !== me.id) {
       return res.status(403).json({ error: "Non autorizzato" });
+    }
+
+    if (isCarSold(offer.car) || isCarRemovedAfterSale(offer.car)) {
+      return res.status(400).json({
+        error: "Questa auto è già stata venduta. Le offerte non sono più operative.",
+        code: "CAR_NOT_AVAILABLE",
+      });
     }
 
     const updated = await prisma.offer.update({
@@ -260,21 +372,42 @@ router.post("/:id/decline", async (req, res) => {
 
 /**
  * GET /api/offers/received
- * Restituisce tutte le offerte ricevute dal proprietario
+ *
+ * Restituisce le offerte ricevute dal proprietario.
+ *
+ * Mostra:
+ * - offerte su auto AVAILABLE
+ * - offerte ACCEPTED su auto SOLD_PENDING_REMOVAL, così durante i 5 giorni puoi ancora aprire chat
+ *
+ * Nasconde:
+ * - offerte su auto REMOVED_AFTER_SALE
+ * - offerte CLOSED_SOLD
  */
 router.get("/received", async (req, res) => {
   try {
+    await runSoldCarsVisualCleanup(prisma);
+
     const { userId: clerkUserId } = getAuth(req);
 
     if (!clerkUserId) {
       return res.status(401).json({ error: "Not authenticated" });
     }
 
-    // ✅ garantisco esistenza user (così non esplode su utenti nuovi)
     const user = await ensureUserInDb(clerkUserId);
 
     const offers = await prisma.offer.findMany({
-      where: { sellerId: user.id },
+      where: {
+        sellerId: user.id,
+        status: {
+          notIn: ["CLOSED_SOLD"],
+        },
+        car: {
+          visuallyRemovedAt: null,
+          marketStatus: {
+            in: ["AVAILABLE", "SOLD_PENDING_REMOVAL"],
+          },
+        },
+      },
       include: {
         buyer: true,
         car: true,
@@ -283,7 +416,19 @@ router.get("/received", async (req, res) => {
       orderBy: { createdAt: "desc" },
     });
 
-    return res.json(offers);
+    const normalized = offers.filter((offer) => {
+      if (offer.car.marketStatus === "AVAILABLE") {
+        return true;
+      }
+
+      if (offer.car.marketStatus === "SOLD_PENDING_REMOVAL") {
+        return offer.status === "ACCEPTED";
+      }
+
+      return false;
+    });
+
+    return res.json(normalized);
   } catch (err) {
     console.error("GET /offers/received ERROR", err);
     return res.status(500).json({ error: "Errore caricamento offerte" });
@@ -292,11 +437,12 @@ router.get("/received", async (req, res) => {
 
 /**
  * POST /api/offers/:id/reject
- * (prima era aperta) -> ora protetta, solo seller può fare reject
- * Nota: tu hai sia DECLINED che REJECTED, li tengo entrambi.
+ * Alias di decline.
  */
 router.post("/:id/reject", async (req, res) => {
   try {
+    await runSoldCarsVisualCleanup(prisma);
+
     const offerId = Number(req.params.id);
     const { userId: clerkUserId } = getAuth(req);
 
@@ -306,7 +452,10 @@ router.post("/:id/reject", async (req, res) => {
 
     const me = await ensureUserInDb(clerkUserId);
 
-    const offer = await prisma.offer.findUnique({ where: { id: offerId } });
+    const offer = await prisma.offer.findUnique({
+      where: { id: offerId },
+      include: { car: true },
+    });
 
     if (!offer) {
       return res.status(404).json({ error: "Offerta non trovata" });
@@ -314,6 +463,13 @@ router.post("/:id/reject", async (req, res) => {
 
     if (offer.sellerId !== me.id) {
       return res.status(403).json({ error: "Non autorizzato" });
+    }
+
+    if (isCarSold(offer.car) || isCarRemovedAfterSale(offer.car)) {
+      return res.status(400).json({
+        error: "Questa auto è già stata venduta. Le offerte non sono più operative.",
+        code: "CAR_NOT_AVAILABLE",
+      });
     }
 
     const updated = await prisma.offer.update({

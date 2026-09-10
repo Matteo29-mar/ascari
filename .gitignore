@@ -2,13 +2,19 @@
 node_modules/
 update.txt
 
-package-lock.json
 # Ignora i log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+frontend/public/cars
+backend/uploads
 
 # Ignora file temporanei o di build
 dist/
 build/
-.env
+
+
+# Ignora file di env
+dev/backend/.env
+dev/frontend/.env
+*.env

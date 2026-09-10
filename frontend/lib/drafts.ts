@@ -15,7 +15,13 @@ export type DraftCar = {
   coverUrl?: string;
   photos?: string[];
 
-  // 🔽 campi aggiuntivi opzionali
+  offerPrice1?: number;
+  offerPrice2?: number;
+  offerPrice3?: number;
+  locationText?: string;
+  city?: string;
+
+  // campi aggiuntivi opzionali
   color?: string;
   torqueNm?: number;
   drivetrain?: string;
@@ -27,24 +33,47 @@ export type DraftCar = {
   trimLevel?: string;
   latitude?: number;
   longitude?: number;
-};
 
+  // campi di supporto UI
+  missingRequiredFields?: string[];
+};
 
 const KEY = 'ascari.drafts';
 
 export function loadDrafts(): DraftCar[] {
-  try { return JSON.parse(localStorage.getItem(KEY) || '[]'); } catch { return []; }
+  try {
+    return JSON.parse(localStorage.getItem(KEY) || '[]');
+  } catch {
+    return [];
+  }
 }
-export function saveDrafts(list: DraftCar[]) { localStorage.setItem(KEY, JSON.stringify(list)); }
-export function addDraft(d: DraftCar) { const all = loadDrafts(); all.unshift(d); saveDrafts(all); }
-export function removeDraft(id: string) { saveDrafts(loadDrafts().filter(d => d.id !== id)); }
-export function getDraft(id: string): DraftCar | null {
-  return loadDrafts().find(d => d.id === id) || null;
+
+export function saveDrafts(list: DraftCar[]) {
+  localStorage.setItem(KEY, JSON.stringify(list));
 }
-export function upsertDraft(d: DraftCar) {
+
+export function addDraft(d: DraftCar) {
   const all = loadDrafts();
-  const i = all.findIndex(x => x.id === d.id);
-  if (i >= 0) all[i] = d; else all.unshift(d);
+  all.unshift(d);
   saveDrafts(all);
 }
-export function clearDrafts() { localStorage.removeItem(KEY); }
+
+export function removeDraft(id: string) {
+  saveDrafts(loadDrafts().filter((d) => d.id !== id));
+}
+
+export function getDraft(id: string): DraftCar | null {
+  return loadDrafts().find((d) => d.id === id) || null;
+}
+
+export function upsertDraft(d: DraftCar) {
+  const all = loadDrafts();
+  const i = all.findIndex((x) => x.id === d.id);
+  if (i >= 0) all[i] = d;
+  else all.unshift(d);
+  saveDrafts(all);
+}
+
+export function clearDrafts() {
+  localStorage.removeItem(KEY);
+}

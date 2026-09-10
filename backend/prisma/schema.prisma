@@ -7,6 +7,36 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum CarMarketStatus {
+  AVAILABLE
+  SOLD_PENDING_REMOVAL
+  REMOVED_AFTER_SALE
+}
+
+enum CashoutStatus {
+  REQUESTED
+  PAID
+  FAILED
+  CANCELLED
+}
+
+enum DealerPlan {
+  STARTER
+  ADVANCED
+}
+
+enum DealerSubscriptionStatus {
+  INACTIVE
+  INCOMPLETE
+  INCOMPLETE_EXPIRED
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  UNPAID
+  CANCELED
+  PAUSED
+}
+
 model User {
   id        String   @id @default(cuid())
   clerkId   String   @unique
@@ -15,13 +45,223 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  stripeAccountId             String?   @unique
+  stripeAccountStatus         String    @default("NOT_STARTED")
+  stripeChargesEnabled        Boolean   @default(false)
+  stripePayoutsEnabled        Boolean   @default(false)
+  stripeDetailsSubmitted      Boolean   @default(false)
+  stripeOnboardingCompletedAt DateTime?
+  paymentsEnabledAt           DateTime?
+
   cars  Car[]
   likes Like[]
 
-  // OFFERTE
   buyerOffers  Offer[]   @relation("BuyerOffers")
   sellerOffers Offer[]   @relation("SellerOffers")
-  messages     Message[] // 👈 QUESTO MANCAVA
+  messages     Message[]
+
+  buyerChats  Chat[] @relation("BuyerChats")
+  sellerChats Chat[] @relation("SellerChats")
+
+  inspectorProfile InspectorProfile?
+  dealerProfile    DealerProfile?
+
+  sellerInspectionRequests InspectionRequest[] @relation("SellerInspectionRequests")
+  inspectionReports        InspectionReport[]
+  inspectorCashouts        InspectorCashout[]
+
+  buyerPayments  Payment[] @relation("BuyerPayments")
+  sellerPayments Payment[] @relation("SellerPayments")
+
+  buyerSaleHistories  SaleHistory[] @relation("BuyerSaleHistories")
+  sellerSaleHistories SaleHistory[] @relation("SellerSaleHistories")
+
+  dealerReviews DealerReview[] @relation("DealerReviewAuthor")
+}
+
+model DealerProfile {
+  id     String @id @default(cuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  dealerName   String
+  businessName String?
+  vatNumber    String?
+  description  String?
+  logoUrl      String?
+
+  address  String
+  city     String
+  province String?
+  country  String? @default("Italia")
+
+  email   String
+  phone   String
+  website String?
+
+  latitude  Float?
+  longitude Float?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  subscription DealerSubscription?
+  devices      DealerDevice[]
+  reviews      DealerReview[]
+
+  @@index([city])
+  @@index([latitude, longitude])
+}
+
+model DealerSubscription {
+  id String @id @default(cuid())
+
+  dealerProfileId String        @unique
+  dealerProfile   DealerProfile @relation(fields: [dealerProfileId], references: [id], onDelete: Cascade)
+
+  plan   DealerPlan               @default(STARTER)
+  status DealerSubscriptionStatus @default(INACTIVE)
+
+  stripeCustomerId     String? @unique
+  stripeSubscriptionId String? @unique
+  stripePriceId        String?
+
+  currentPeriodStart DateTime?
+  currentPeriodEnd   DateTime?
+  cancelAtPeriodEnd  Boolean   @default(false)
+  cancelAt           DateTime?
+  canceledAt         DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([plan, status])
+  @@index([stripePriceId])
+}
+
+model DealerDevice {
+  id String @id @default(cuid())
+
+  dealerProfileId String
+  dealerProfile   DealerProfile @relation(fields: [dealerProfileId], references: [id], onDelete: Cascade)
+
+  deviceId  String
+  label     String?
+  userAgent String?
+  lastSeenAt DateTime @default(now())
+  revokedAt  DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([dealerProfileId, deviceId])
+  @@index([dealerProfileId, revokedAt])
+  @@index([lastSeenAt])
+}
+
+model DealerReview {
+  id Int @id @default(autoincrement())
+
+  dealerProfileId String
+  dealerProfile   DealerProfile @relation(fields: [dealerProfileId], references: [id], onDelete: Cascade)
+
+  authorId String
+  author   User @relation("DealerReviewAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+
+  rating  Int
+  comment String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([dealerProfileId, authorId])
+  @@index([dealerProfileId, createdAt])
+  @@index([rating])
+}
+
+model InspectorProfile {
+  id     String @id @default(cuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  workshopName    String
+  workshopAddress String?
+  logoUrl         String?
+  email           String
+  phone           String
+
+  city      String?
+  latitude  Float?
+  longitude Float?
+
+  radiusKm Int @default(70)
+
+  workStartMin Int @default(540)
+  workEndMin   Int @default(1080)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  slots InspectorSlot[]
+
+  requests               InspectionRequest[]
+  calendarConfirmedColor String              @default("#22c55e")
+
+  @@index([latitude, longitude])
+  @@index([radiusKm])
+}
+
+model InspectorSlot {
+  id          Int              @id @default(autoincrement())
+  inspectorId String
+  inspector   InspectorProfile @relation(fields: [inspectorId], references: [id], onDelete: Cascade)
+
+  startAt     DateTime
+  endAt       DateTime
+  isAvailable Boolean  @default(true)
+
+  createdAt DateTime @default(now())
+
+  requests InspectionRequest[]
+
+  @@index([inspectorId, startAt])
+  @@index([inspectorId, endAt])
+}
+
+model InspectionRequest {
+  id Int @id @default(autoincrement())
+
+  carId Int
+  car   Car @relation(fields: [carId], references: [id], onDelete: Cascade)
+
+  sellerId String
+  seller   User   @relation("SellerInspectionRequests", fields: [sellerId], references: [id])
+
+  inspectorId String
+  inspector   InspectorProfile @relation(fields: [inspectorId], references: [id], onDelete: Cascade)
+
+  startAt DateTime
+  endAt   DateTime
+
+  inspectorSlotId Int
+  inspectorSlot   InspectorSlot @relation(fields: [inspectorSlotId], references: [id], onDelete: Cascade)
+
+  status    InspectionStatus @default(PENDING)
+  matchType MatchType        @default(PERFECT)
+
+  notes String?
+
+  chat Chat? @relation("InspectionChat")
+
+  report InspectionReport?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([inspectorId, startAt])
+  @@index([sellerId, createdAt])
+  @@index([carId])
+  @@index([inspectorSlotId])
 }
 
 model Car {
@@ -31,15 +271,15 @@ model Car {
   title String
   year  Int
 
-  offerPrice1 Int?
-  offerPrice2 Int?
-  offerPrice3 Int?
+  offerPrice1 Int
+  offerPrice2 Int
+  offerPrice3 Int
 
   trimLevel    String?
   priceEur     Int?
   color        String?
-  transmission String?
-  fuelType     String?
+  transmission String
+  fuelType     String
   engine       String?
   horsepower   Int?
   torqueNm     Int?
@@ -51,17 +291,33 @@ model Car {
   photos       String[]
   coverUrl     String?
 
-  // ✅ PERIZIA (NUOVO)
   isPeriziata       Boolean   @default(false)
   periziaDocUrl     String?
   periziaUploadedAt DateTime?
 
-  // RELAZIONE con Offer
+  paymentEnabled      Boolean   @default(false)
+  salePriceEur        Int?
+  ascariFeeEur        Int?
+  inspectionFeeEur    Int?
+  sellerNetEur        Int?
+  paymentStatus       String    @default("NOT_CONFIGURED")
+  paymentConfiguredAt DateTime?
+
+  marketStatus        CarMarketStatus @default(AVAILABLE)
+  soldAt              DateTime?
+  removalScheduledAt  DateTime?
+  visuallyRemovedAt   DateTime?
+  soldByPaymentId     Int?
+  soldBySaleHistoryId Int?
+
+  payments Payment[]
+
+  saleHistories SaleHistory[]
+
   offers Offer[] @relation("CarOffers")
 
-  // ✅ NUOVI CAMPI INDIRIZZO
-  locationText String?   // es: "Via Rossi 45, Milano" (input utente)
-  city         String?
+  locationText String
+  city         String
   country      String?
 
   latitude  Float?
@@ -75,9 +331,269 @@ model Car {
 
   likes Like[]
 
+  inspectionRequests InspectionRequest[]
+
+  inspectionReports InspectionReport[]
+
+  qrToken         String?   @unique
+  qrCodeCreatedAt DateTime?
+  qrScans         QrScan[]
+
+  dealerPlanSuspended   Boolean   @default(false)
+  dealerPlanSuspendedAt DateTime?
+
+  arvePricingAnalysis    ArvePricingAnalysis?
+  arveMarketObservations ArveMarketObservation[]
+
   @@index([make, model])
   @@index([latitude, longitude])
   @@index([ownerId])
+  @@index([paymentEnabled])
+  @@index([marketStatus])
+  @@index([removalScheduledAt])
+  @@index([visuallyRemovedAt])
+}
+
+model ArvePricingAnalysis {
+  id    Int @id @default(autoincrement())
+  carId Int @unique
+  car   Car @relation(fields: [carId], references: [id], onDelete: Cascade)
+
+  originalOfferPrice1 Int
+  originalOfferPrice2 Int
+  originalOfferPrice3 Int
+
+  quickSalePrice  Int
+  reservePrice    Int
+  democraticPrice Int
+
+  marketMin    Int
+  marketMax    Int
+  marketMedian Int
+
+  recommendation String
+  message        String
+  confidence     Float
+  evidenceLevel  Int
+
+  comparableItems     Json?
+  privateMatchesCount          Int   @default(0)
+  marketReferenceMatchesCount Int   @default(0)
+  marketReferenceQuality      Float @default(0)
+  marketReferenceMedian       Int?
+  marketReferenceItems        Json?
+
+  sourceType      String
+  modelUsed       String?
+  promptVersion   String?
+  inputTokens     Int?
+  outputTokens    Int?
+  totalTokens     Int?
+  rawResponseJson Json?
+  analysisError   String?
+
+  userDecision       String    @default("PENDING")
+  appliedOfferPrice1 Int?
+  appliedOfferPrice2 Int?
+  appliedOfferPrice3 Int?
+  decidedAt          DateTime?
+
+  actualSoldPriceEur Int?
+  actualSoldAt       DateTime?
+  daysToSell         Int?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([sourceType])
+  @@index([userDecision])
+  @@index([actualSoldAt])
+  @@index([createdAt])
+}
+
+enum ArveMarketDataQuality {
+  VERIFIED
+  AGGREGATED
+  MODEL_ESTIMATE
+  TO_VALIDATE
+}
+
+enum ArveMarketObservationType {
+  LISTING_CREATED
+  OFFER_RECEIVED
+  OFFER_ACCEPTED
+  REAL_SALE
+}
+
+model ArveMarketReference {
+  id Int @id @default(autoincrement())
+
+  make      String
+  model     String
+  trimLevel String?
+  fuelType  String
+
+  makeNormalized  String
+  modelNormalized String
+  fuelNormalized  String
+
+  referenceYear Int
+  kmMin         Int?
+  kmMax         Int?
+  priceMin      Int
+  priceMax      Int
+
+  quality     ArveMarketDataQuality
+  qualityNote String?
+
+  source        String   @default("ASCARI_ARVE_XLSX")
+  sourceVersion String
+  importedAt    DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([makeNormalized, modelNormalized, fuelNormalized, referenceYear, source], map: "ArveMarketReference_vehicle_year_source_key")
+  @@index([makeNormalized, modelNormalized, fuelNormalized], map: "ArveMarketReference_vehicle_idx")
+  @@index([referenceYear])
+  @@index([quality])
+  @@index([sourceVersion])
+}
+
+model ArveMarketObservation {
+  id Int @id @default(autoincrement())
+
+  carId Int?
+  car   Car? @relation(fields: [carId], references: [id], onDelete: SetNull)
+
+  type        ArveMarketObservationType
+  externalKey String @unique
+
+  make         String
+  model        String
+  year         Int
+  mileageKm    Int?
+  fuelType     String
+  transmission String?
+  trimLevel    String?
+
+  amountEur   Int?
+  offerPrice1 Int?
+  offerPrice2 Int?
+  offerPrice3 Int?
+
+  metadata   Json?
+  occurredAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+
+  @@index([make, model, year])
+  @@index([type, occurredAt])
+  @@index([carId, occurredAt])
+}
+
+model QrScan {
+  id Int @id @default(autoincrement())
+
+  carId Int
+  car   Car @relation(fields: [carId], references: [id], onDelete: Cascade)
+
+  visitorHash String
+  userAgent   String?
+  scannedAt   DateTime @default(now())
+
+  @@index([carId, scannedAt])
+  @@index([carId, visitorHash])
+}
+
+model InspectionReport {
+  id Int @id @default(autoincrement())
+
+  inspectionRequestId Int               @unique
+  inspectionRequest   InspectionRequest @relation(fields: [inspectionRequestId], references: [id], onDelete: Cascade)
+
+  inspectorUserId String
+  inspectorUser   User   @relation(fields: [inspectorUserId], references: [id], onDelete: Cascade)
+
+  carId Int
+  car   Car @relation(fields: [carId], references: [id], onDelete: Cascade)
+
+  cashout InspectorCashout?
+
+  title          String?
+  overallStatus  String?
+  plate          String?
+  vin            String?
+  km             Int?
+  inspectionDate DateTime?
+  location       String?
+
+  bodyworkNotes    String?
+  interiorNotes    String?
+  engineNotes      String?
+  mechanicsNotes   String?
+  tiresNotes       String?
+  electronicsNotes String?
+  testDriveNotes   String?
+  defectsFound     String?
+  finalOpinion     String?
+  valuationOpinion String?
+  estimatedValue   Int?
+
+  ratings InspectionRating[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([inspectorUserId, createdAt])
+  @@index([carId])
+}
+
+model InspectionRating {
+  id Int @id @default(autoincrement())
+
+  reportId Int
+  report   InspectionReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  pointKey   String
+  pointLabel String
+  category   String
+  score      Int
+  note       String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([reportId, pointKey])
+  @@index([reportId, category])
+  @@index([score])
+}
+
+model InspectorCashout {
+  id Int @id @default(autoincrement())
+
+  reportId Int              @unique
+  report   InspectionReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  inspectorUserId String
+  inspectorUser   User   @relation(fields: [inspectorUserId], references: [id], onDelete: Cascade)
+
+  amountEur Int    @default(120)
+  currency  String @default("eur")
+
+  status CashoutStatus @default(REQUESTED)
+
+  stripeTransferId String? @unique
+  stripeAccountId  String?
+
+  failureReason String?
+
+  requestedAt DateTime  @default(now())
+  paidAt      DateTime?
+  failedAt    DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([inspectorUserId, createdAt])
+  @@index([status])
 }
 
 model Like {
@@ -86,10 +602,10 @@ model Like {
   carId     Int
   createdAt DateTime @default(now())
 
-  user User @relation(fields: [userId], references: [id])
-  car  Car  @relation(fields: [carId], references: [id])
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  car  Car  @relation(fields: [carId], references: [id], onDelete: Cascade)
 
-  @@unique([userId, carId]) // uno stesso utente non può mettere "mi piace" due volte alla stessa auto
+  @@unique([userId, carId])
 }
 
 model Offer {
@@ -109,28 +625,125 @@ model Offer {
 }
 
 model Chat {
-  id        Int       @id @default(autoincrement())
-  offerId   Int       @unique
-  carId     Int
-  buyerId   String
-  sellerId  String
-  createdAt DateTime  @default(now())
-  
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now())
+
+  buyerId  String
+  sellerId String
+  buyer    User   @relation("BuyerChats", fields: [buyerId], references: [id])
+  seller   User   @relation("SellerChats", fields: [sellerId], references: [id])
+
+  offerId Int?
+  offer   Offer? @relation("OfferChat", fields: [offerId], references: [id])
+
+  inspectionRequestId Int?
+  inspectionRequest   InspectionRequest? @relation("InspectionChat", fields: [inspectionRequestId], references: [id], onDelete: Cascade)
 
   messages Message[]
 
-  offer Offer @relation("OfferChat", fields: [offerId], references: [id])
+  @@unique([offerId])
+  @@unique([inspectionRequestId])
+  @@index([buyerId, createdAt])
+  @@index([sellerId, createdAt])
 }
 
 model Message {
-  id        Int      @id @default(autoincrement())
+  id        Int       @id @default(autoincrement())
   content   String
-  createdAt DateTime @default(now())
-  readAt    DateTime? // 👈 null = non letto
+  createdAt DateTime  @default(now())
+  readAt    DateTime?
 
   chatId Int
   chat   Chat @relation(fields: [chatId], references: [id], onDelete: Cascade)
 
   senderId String
   sender   User   @relation(fields: [senderId], references: [id])
+}
+
+model Payment {
+  id Int @id @default(autoincrement())
+
+  carId Int
+  car   Car @relation(fields: [carId], references: [id], onDelete: Cascade)
+
+  buyerId String
+  buyer   User   @relation("BuyerPayments", fields: [buyerId], references: [id])
+
+  sellerId String
+  seller   User   @relation("SellerPayments", fields: [sellerId], references: [id])
+
+  stripePaymentIntentId  String  @unique
+  stripeClientSecret     String?
+  stripeChargeId         String?
+  stripeTransferId       String?
+  stripeApplicationFeeId String?
+
+  amountEur        Int
+  ascariFeeEur     Int
+  inspectionFeeEur Int?
+  sellerNetEur     Int
+  currency         String @default("eur")
+
+  status     String    @default("CREATED")
+  paidAt     DateTime?
+  refundedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([carId, createdAt])
+  @@index([buyerId, createdAt])
+  @@index([sellerId, createdAt])
+  @@index([status])
+}
+
+model SaleHistory {
+  id Int @id @default(autoincrement())
+
+  carId Int?
+  car   Car? @relation(fields: [carId], references: [id], onDelete: SetNull)
+
+  buyerId String
+  buyer   User   @relation("BuyerSaleHistories", fields: [buyerId], references: [id])
+
+  sellerId String
+  seller   User   @relation("SellerSaleHistories", fields: [sellerId], references: [id])
+
+  paymentId Int? @unique
+
+  amountEur        Int
+  ascariFeeEur     Int?
+  inspectionFeeEur Int?
+  sellerNetEur     Int?
+
+  currency String @default("eur")
+
+  carSnapshot        Json
+  inspectionSnapshot Json?
+
+  stripePaymentIntentId String?
+  stripeChargeId        String?
+
+  soldAt    DateTime @default(now())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([buyerId, soldAt])
+  @@index([sellerId, soldAt])
+  @@index([carId])
+}
+
+enum InspectionStatus {
+  PENDING
+  ASSIGNED
+  SEEN
+  CONFIRMED
+  DONE
+  CANCELLED
+}
+
+enum MatchType {
+  PERFECT
+  FLEXIBLE_TIME
+  RADIUS
 }
